@@ -31,13 +31,13 @@ pip install .
 
 ## Example
 
-![example gif](illustration/s2driver_visual_tool_optimized.gif)
+![example gif](docs/_static/s2driver_visual_tool_optimized.gif)
 
 
 ## 2D-fiiting method for angle computation
 
-![example files](fig/example_3D_fitting_one_detector_v2.png)
-![example files](fig/example_2D_fitting_one_band_v3.png)
-![example files](fig/example_scattering_angle_all_bands.png)
-![example files](fig/example_reflectance_all_bands.png)
-![example files](fig/example_ndwi_mask.png)
+
+![example files](docs/_static/example_2D_fitting_one_band_v3.png)
+![example files](docs/_static/example_scattering_angle_all_bands.png)
+![example files](docs/_static/example_reflectance_all_bands.png)
+![example files](docs/_static/example_ndwi_mask.png)
