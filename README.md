@@ -1,4 +1,5 @@
-![GRSdriver_icon](docs/_static/GRS_driver.png)
+<img src="docs/_static/GRS_driver.png" alt="GRSdriver_icon" width="100"/>
+
 # GRSdriver package
 ## Tool for easy loading of Sentinel-2 L1C SAFE format with accurate computation of the viewing angles
 
