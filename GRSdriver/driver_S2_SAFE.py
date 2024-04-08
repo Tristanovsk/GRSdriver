@@ -43,7 +43,7 @@ INFO = pd.DataFrame({'bandId': range(13),
                      'Resolution (m)': NATIVE_RESOLUTION}).set_index('bandId').T
 
 
-class sentinel2_driver():
+class Sentinel2Driver():
     def __init__(self, imageSAFE,
                  band_idx=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
                  band_tbp_idx=[0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12],

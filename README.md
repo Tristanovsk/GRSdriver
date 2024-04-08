@@ -1,35 +1,33 @@
 <img src="docs/_static/GRS_driver.png" alt="GRSdriver_icon" width="100"/>
 
 # GRSdriver package
-## Tool for easy loading of Sentinel-2 L1C SAFE format with accurate computation of the viewing angles
+## Driver dedicated to load and prepare data for the GRS processor
+- Tool for easy loading of Sentinel-2 L1C SAFE format with accurate computation of the viewing angles
+- Applicable to Landsat 8 and 9
+- Visualization tools
 
-### Installation on TREX (CNES)
+### Installation
 1. First clone the repository:
 ```commandline
-git clone https://gitlab.cnes.fr/waterquality/io/s2driver
+git clone https://github.com/Tristanovsk/GRSdriver.git
 ```
 
-2. Create the conda environment 'grs_cnes'
+2. You may duplicate the conda environment (optional)
 ```commandline
-module load conda
 conda env create -f environment.yml
 ```
 
-3. Install s2driver
+3. Install GRSdriver
 ```commandline
-conda activate grs_cnes
+conda activate grssuite
 pip install .
 ```
 You are done.
 
-### Usual installation, please use conda environment
-conda create -n "YOUR_ENV" python=3.11
-
-conda activate "YOUR_ENV"
-
-conda install gdal numba rasterio
-
+### Usual installation
+```commandline
 pip install .
+```
 
 ## Example
 

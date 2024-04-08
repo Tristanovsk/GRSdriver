@@ -44,7 +44,7 @@ INFO = pd.DataFrame({'bandId': range(len(BAND_NAMES)),
                      'Resolution (m)': NATIVE_RESOLUTION}).set_index('bandId').T
 
 
-class landsat_driver():
+class LandsatDriver():
     def __init__(self, image_path,
                  band_idx=[0, 1, 2, 3, 4, 5, 6, 7, 8],
                  band_tbp_idx=[0, 1, 2, 3, 4, 5, 7, 8],
