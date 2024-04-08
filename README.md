@@ -1,4 +1,5 @@
-# s2driver package
+![GRSdriver_icon](docs/_static/GRS_driver.png)
+# GRSdriver package
 ## Tool for easy loading of Sentinel-2 L1C SAFE format with accurate computation of the viewing angles
 
 ### Installation on TREX (CNES)
