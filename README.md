@@ -12,9 +12,14 @@
 git clone https://github.com/Tristanovsk/GRSdriver.git
 ```
 
-2. You may duplicate the conda environment (optional)
+2.a. You may duplicate the conda environment (optional)
 ```commandline
 conda env create -f environment.yml
+```
+
+2.b. If you do not duplicate the environment please install GDAL with conda
+```commandline
+conda install -c conda-forge gdal
 ```
 
 3. Install GRSdriver
@@ -26,6 +31,7 @@ You are done.
 
 ### Usual installation
 ```commandline
+conda install -c conda-forge gdal
 pip install .
 ```
 
@@ -34,10 +40,12 @@ pip install .
 ![example gif](docs/_static/s2driver_visual_tool_optimized.gif)
 
 
-## 2D-fiiting method for angle computation
-
+## 2D-fitting method for angle computation
 
 ![example files](docs/_static/example_2D_fitting_one_band_v3.png)
 ![example files](docs/_static/example_scattering_angle_all_bands.png)
 ![example files](docs/_static/example_reflectance_all_bands.png)
+
+## Example of water masking
+
 ![example files](docs/_static/example_ndwi_mask.png)
