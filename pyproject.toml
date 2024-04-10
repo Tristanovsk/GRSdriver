@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "GRSdriver"
 version = "1.0.0"
-description = "Driver for L1C satellite image dedicated to GRS processor"
+description = "Driver for L1C satellite images dedicated to GRS processor"
 readme = "README.md"
 authors = [{ name = "Tristan Harmel", email = "tristan.harmel@gmail.com" }]
 license = { file = "LICENSE" }
@@ -16,10 +16,11 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 keywords = ["Sentinel-2","Landsat-8","Landsat-9","driver", "EO satellite"]
-dependencies = [
-    "eoreader >= 0.21.1",
-  ]
 requires-python = ">=3.9"
+
+dynamic = ["dependencies"]
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
 dev = ["black", "bumpver", "isort", "pip-tools", "pytest"]

@@ -6,7 +6,20 @@
 - Applicable to Landsat 8 and 9
 - Visualization tools
 
-### Installation
+## Installation
+
+### Usual installation
+```commandline
+conda install -c conda-forge gdal
+pip install GRSdriver
+```
+
+If you have no GDAL implementation yet, please une anaconda environment and install GDAL before GRSdriver:
+```commandline
+conda install -c conda-forge gdal
+```
+
+### Installation from GRSdriver repository (enables use of the notebook and visualization tools)
 1. First clone the repository:
 ```commandline
 git clone https://github.com/Tristanovsk/GRSdriver.git
@@ -25,15 +38,19 @@ conda install -c conda-forge gdal
 3. Install GRSdriver
 ```commandline
 conda activate grssuite
+conda install -c pyviz holoviews panel
 pip install .
 ```
+
+4. Install and configure JupyterLab and Holoviews
+```commandline
+pip install holoviews datashader
+conda install -c conda-forge jupyterlab
+jupyter labextension install @pyviz/jupyterlab_pyviz
+```
+
 You are done.
 
-### Usual installation
-```commandline
-conda install -c conda-forge gdal
-pip install .
-```
 
 ## Example
 

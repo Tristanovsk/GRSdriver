@@ -7,7 +7,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 # mpl.use('TkAgg')
-import hvplot.xarray
+#import hvplot.xarray
 
 import holoviews as hv
 import holoviews.operation.datashader as hd
