@@ -17,7 +17,7 @@ setup(
     long_description_content_type='text/markdown',
     packages=find_packages(exclude=['build']),
     package_data={
-        '': ['*.nc', '*.txt', '*.csv', '*.dat'],
+        '': ['*.nc', '*.txt', '*.csv', '*.dat','rsr/data/*'],
 
     },
     include_package_data=True,
@@ -31,12 +31,12 @@ setup(
     # Dependent packages (distributions)
     install_requires=['GDAL', 'numpy', 'scipy', 'pandas', 'xarray','rioxarray',
                       'matplotlib', 'rasterio', 'cartopy',
-                      'numba','eoreader','docopt',
+                      'numba','eoreader','docopt','pystac',
                       'geopandas','affine','shapely','s2cloudless',
                       'xmltodict' ,'importlib_resources'],
 
     entry_points={
          'console_scripts': [
-             'GRSdriver = GRSdriver.run:main'
+             'grs_driver = GRSdriver.run:main'
          ]}
 )
