@@ -1,9 +1,10 @@
-''' Executable to convert Sentinel-2 or Landsat 8/9 L1C images to png format
+'''
+Executable to convert Sentinel-2 or Landsat 8/9 L1C images to png format
 
 Usage:
-  GRSdriver <input_file>  [-o <ofile>] [--odir <odir>] [--rgb_bands ][--resolution res]
-  grs -h | --help
-  grs -v | --version
+  grs_driver <input_file> [--rgb_bands RGB] [-o <ofile>] [--odir <odir>] [--resolution res] [--no_clobber]
+  grs_driver -h | --help
+  grs_driver -v | --version
 
 Options:
   -h --help        Show this screen.
@@ -13,9 +14,10 @@ Options:
 
   -o ofile         Full (absolute or relative) path to output L2 image.
   --odir odir      Ouput directory [default: ./]
-  --no_clobber     Do not process <input_file> if <output_file> already exists.
+  --rgb_bands=RGB  band number to be used in RGB [default: '4,3,1']
+
   --resolution=res  spatial resolution of the scene pixels
-  --rgb_bands R,G,B  band number to be used in RGB [default: 4,3,1]
+  --no_clobber     Do not process <input_file> if <output_file> already exists.
 
 '''
 
@@ -23,17 +25,18 @@ import os, sys
 from docopt import docopt
 import numpy as np
 import logging
-from . import __package__, __version__
+from GRSdriver import __package__, __version__
 
 
 def main():
+
     args = docopt(__doc__, version=__package__ + '_' + __version__)
     print(args)
 
     file = args['<input_file>']
 
     resolution = int(args['--resolution'])
-    R,G,B = np.array(args['--rgb_bands'])
+    RGB = np.array(args['--rgb_bands'])
     noclobber = args['--no_clobber']
 
     ##################################
