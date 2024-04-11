@@ -10,7 +10,6 @@
 
 ### Usual installation
 ```commandline
-conda install -c conda-forge gdal
 pip install GRSdriver
 ```
 
@@ -44,7 +43,7 @@ pip install .
 
 4. Install and configure JupyterLab and Holoviews
 ```commandline
-pip install holoviews datashader
+pip install holoviews datashader cartopy
 conda install -c conda-forge jupyterlab
 jupyter labextension install @pyviz/jupyterlab_pyviz
 ```

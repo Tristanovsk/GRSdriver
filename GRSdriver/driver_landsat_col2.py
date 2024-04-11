@@ -25,6 +25,8 @@ from eoreader.reader import Reader
 from eoreader.bands import RAW_CLOUDS
 from eoreader.keywords import TO_REFLECTANCE
 
+from . import __package__
+
 opj = os.path.join
 
 BAND_NAMES = np.array(['B01', 'B02', 'B03', 'B08', 'B04', 'B05', 'B09', 'B06', 'B07'])
@@ -93,9 +95,9 @@ class LandsatDriver():
         # --------------------------------
 
         if '8' in self.satellite:
-            srf_file = files('rsr.data').joinpath('rsr_landsat_8_oli.nc')
+            srf_file = files(__package__+'.rsr.data').joinpath('rsr_landsat_8_oli.nc')
         elif '9' in self.satellite:
-            srf_file = files('rsr.data').joinpath('rsr_landsat_9_oli.nc')
+            srf_file = files(__package__+'.rsr.data').joinpath('rsr_landsat_9_oli.nc')
         else:
             print('Problem to fetch spectral response functions for ', self.satellite)
 
