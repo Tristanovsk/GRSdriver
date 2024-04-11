@@ -21,6 +21,8 @@ import eoreader as eo
 from eoreader.reader import Reader
 from eoreader.env_vars import USE_DASK
 
+from . import __package__
+
 # EOReader uses dask if == 1
 os.environ[USE_DASK] = "0"
 
