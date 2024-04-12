@@ -145,9 +145,9 @@ class view_geo(utils):
         pn_colormap = pn.widgets.Select(value='CET_D13',
                                         options=self.colormaps)
         pn_opacity = pn.widgets.FloatSlider(name='Opacity', value=0.95, start=0, end=1, step=0.05)
-        range_slider = pn.widgets.RangeSlider(name='Range Slider', start=self.minmax[0], end=self.minmax[1],
-                                              value=self.minmaxvalues, step=0.0001)
-        pn_basemaps = pn.widgets.Select(value='StamenTerrainRetina', options=bases)
+        range_slider = pn.widgets.EditableRangeSlider(name='Range Slider', start=self.minmax[0], end=self.minmax[1],
+                                                      value=self.minmaxvalues, step=0.0001)
+        pn_basemaps = pn.widgets.Select(value=bases[0], options=bases)
         pn_date = pn.widgets.DatePicker(value=dates[0], start=dates[0],
                                         enabled_dates=dates.tolist())  # .date, end=dates[-1],value=dates[0])
 

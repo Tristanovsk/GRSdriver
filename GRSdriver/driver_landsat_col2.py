@@ -29,14 +29,14 @@ from . import __package__
 
 opj = os.path.join
 
-BAND_NAMES = np.array(['B01', 'B02', 'B03', 'B08', 'B04', 'B05', 'B09', 'B06', 'B07'])
+BAND_NAMES = np.array(['B01', 'B02', 'B03', 'B08', 'B04', 'B05', 'B09', 'B06', 'B07','B08','B09'])
 BAND_NAMES_EOREADER = np.array(['CA', 'BLUE', 'GREEN', 'PAN', 'RED', 'NIR',
-                                'SWIR_CIRRUS', 'SWIR_1', 'SWIR_2'])
+                                'SWIR_CIRRUS', 'SWIR_1', 'SWIR_2','TIR_1','TIR_2'])
 
 BAND_ID = [b.replace('B', '') for b in BAND_NAMES]
-NATIVE_RESOLUTION = [30, 30, 30, 15, 30, 30, 30, 30, 30]
-WAVELENGTH = np.array([443, 490, 560, 590, 665, 865, 1370, 1610, 2190])
-BAND_WIDTH = [25, 60, 60, 173, 33, 28, 21, 95, 287]
+NATIVE_RESOLUTION = [30, 30, 30, 15, 30, 30, 30, 30, 30,100,100]
+WAVELENGTH = np.array([443, 490, 560, 590, 665, 865, 1370, 1610, 2190,11000,12000])
+BAND_WIDTH = [25, 60, 60, 173, 33, 28, 21, 95, 287,590,1010]
 
 INFO = pd.DataFrame({'bandId': range(len(BAND_NAMES)),
                      'ESA': BAND_NAMES,
@@ -95,9 +95,9 @@ class LandsatDriver():
         # --------------------------------
 
         if '8' in self.satellite:
-            srf_file = files(__package__+'.rsr.data').joinpath('rsr_landsat_8_oli.nc')
+            srf_file = files(__package__+'.rsr.data').joinpath('rsr_landsat_8_oli_tirs.nc')
         elif '9' in self.satellite:
-            srf_file = files(__package__+'.rsr.data').joinpath('rsr_landsat_9_oli.nc')
+            srf_file = files(__package__+'.rsr.data').joinpath('rsr_landsat_9_oli_tirs.nc')
         else:
             print('Problem to fetch spectral response functions for ', self.satellite)
 
@@ -150,7 +150,7 @@ class LandsatDriver():
         self.prod.attrs['wl_to_process'] = WAVELENGTH[self.band_tbp_idx]
 
         # add spectral response function
-        self.prod = xr.merge([self.prod, self.SRFs.sel(wl=self.prod.wl.values)]).drop_vars('bandID')
+        self.prod = xr.merge([self.prod, self.SRFs.sel(wl=self.prod.wl.values,method="nearest")]).drop_vars('bandID')
 
         # compute central wavelengths
         wl_true = []
