@@ -128,7 +128,7 @@ class LandsatDriver():
     def load_mask(self):
         self.mask = self.reader.load([RAW_CLOUDS], pixel_size=self.resolution
                                    ).squeeze().rename(
-                                    {RAW_CLOUDS: "l1c_flag"}).astype(np.uint32)
+                                    {RAW_CLOUDS: "flags"}).astype(np.uint32)
 
     def load_bands(self, add_time=True, **kwargs):
 
