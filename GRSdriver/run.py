@@ -14,9 +14,9 @@ Options:
 
   -o ofile         Full (absolute or relative) path to output L2 image.
   --odir odir      Ouput directory [default: ./]
-  --rgb_bands=RGB  band number to be used in RGB [default: '4,3,1']
-
-  --resolution=res  spatial resolution of the scene pixels
+  --rgb_bands RGB  Comma separated list of band numbers to be used in RGB
+                   [default: 3,2,1]
+  --resolution res  spatial resolution of the scene pixels [default: 60]
   --no_clobber     Do not process <input_file> if <output_file> already exists.
 
 '''
@@ -25,8 +25,15 @@ import os, sys
 from docopt import docopt
 import numpy as np
 import logging
-from GRSdriver import __package__, __version__
 
+from GRSdriver import __package__, __version__
+import GRSdriver
+
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+from eoreader.env_vars import USE_DASK
+# Ensure EOReader uses dask
+os.environ[USE_DASK] = "1"
 
 def main():
 
@@ -36,9 +43,9 @@ def main():
     file = args['<input_file>']
 
     resolution = int(args['--resolution'])
-    RGB = np.array(args['--rgb_bands'])
+    RGB =  [int(x) for x in args['--rgb_bands'].split(',')]
     noclobber = args['--no_clobber']
-
+    print(RGB)
     ##################################
     # File naming convention
     ##################################
@@ -65,6 +72,24 @@ def main():
                  file + ', output file:' + outfile +
                  ', resolution:' + str(resolution))
 
+    # load product into l1c object
+    l1c = GRSdriver.LandsatDriver(file,
+                                  band_idx=RGB,
+                                  resolution=resolution)
+    l1c.load_bands()
+
+    # get geographic information
+    epsg = l1c.extent.crs.to_epsg()
+    str_epsg = str(epsg)
+    zone = str_epsg[-2:]
+    is_south = str_epsg[2] == 7
+    proj = ccrs.UTM(zone, is_south)
+
+    # plot RGB image
+
+    plt.figure(figsize=(15, 15))
+    p = l1c.prod.bands.isel(wl=[2,1,0]).squeeze().plot.imshow(rgb='wl', robust=True,subplot_kws=dict(projection=proj))
+    p.figure.savefig(outfile)
    # TODO implement the RGB converter
 
 

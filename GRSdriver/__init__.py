@@ -21,3 +21,10 @@ __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver
 from .driver_S2_SAFE import Sentinel2Driver
+
+import logging
+#init logger
+logger = logging.getLogger()
+
+level = logging.getLevelName("INFO")
+logger.setLevel(level)

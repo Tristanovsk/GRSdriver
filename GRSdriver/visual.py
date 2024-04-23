@@ -30,7 +30,7 @@ from collections import OrderedDict as odict
 
 
 
-class utils():
+class Utils():
 
     @staticmethod
     def get_geom(aoi_stream, crs=4326):
@@ -58,20 +58,26 @@ class utils():
         return bokeh.models.HoverTool(tooltips=custom_tooltips, formatters=custom_formatters)
 
 
-class view_geo(utils):
+class ViewSpectral(Utils):
     def __init__(self, raster, dates=None,
                  bands=None,
                  reproject=False,
                  minmaxvalues=(0, 0.5),
                  minmax=(0, 1)):
-        # layout settings
-        self.width, self.height = 1200, 700
 
+        # layout settings
+        self.title ='## S2 L1C'
+        self.width, self.height = 1200, 800
         self.key_dimensions = ['x', 'y']
         self.minmaxvalues = minmaxvalues
         self.minmax = minmax
-        self.colormaps = ['CET_D13', 'bky', 'CET_D1A', 'CET_CBL2', 'CET_L10', 'CET_C6s',
+        self.colormaps = ['CET_D13', 'bky', 'rainbow4','CET_D1A', 'CET_CBL2', 'CET_L10', 'CET_C6s',
                           'kbc', 'blues_r', 'kb', 'rainbow', 'fire', 'kgy', 'bjy', 'gray']
+
+        # check if single date, if so push time as dimension to be compliant with multidates
+        if not 'time' in raster.dims:
+            raster = raster.expand_dims('time')
+
         # variables settings
         self.dates = dates
         if dates == None:
@@ -105,23 +111,6 @@ class view_geo(utils):
             source=self.aoi_polygons, drag=True)  # , num_objects=1)#5,styles={'fill_color': aoi_colours})
         self.edit_stream = hv.streams.PolyEdit(source=self.aoi_polygons, vertex_style={'color': 'red'})
 
-    @staticmethod
-    def custom_hover():
-        formatter_code = """
-          var digits = 4;
-          var projections = Bokeh.require("core/util/projections");
-          var x = special_vars.x; var y = special_vars.y;
-          var coords = projections.wgs84_mercator.invert(x, y);
-          return "" + (Math.round(coords[%d] * 10**digits) / 10**digits).toFixed(digits)+ "";
-        """
-        formatter_code_x, formatter_code_y = formatter_code % 0, formatter_code % 1
-        custom_tooltips = [('Lon', '@x{custom}'), ('Lat', '@y{custom}'), ('Value', '@image{0.0000}')]
-        custom_formatters = {
-            '@x': bokeh.models.CustomJSHover(code=formatter_code_x),
-            '@y': bokeh.models.CustomJSHover(code=formatter_code_y)
-        }
-        return bokeh.models.HoverTool(tooltips=custom_tooltips, formatters=custom_formatters)
-
     def visu(self):
         dates = self.dates
         bands = self.bands
@@ -146,7 +135,7 @@ class view_geo(utils):
                                         options=self.colormaps)
         pn_opacity = pn.widgets.FloatSlider(name='Opacity', value=0.95, start=0, end=1, step=0.05)
         range_slider = pn.widgets.EditableRangeSlider(name='Range Slider', start=self.minmax[0], end=self.minmax[1],
-                                                      value=self.minmaxvalues, step=0.0001)
+                                                      value=self.minmaxvalues, step=0.001)
         pn_basemaps = pn.widgets.Select(value=bases[0], options=bases)
         pn_date = pn.widgets.DatePicker(value=dates[0], start=dates[0],
                                         enabled_dates=dates.tolist())  # .date, end=dates[-1],value=dates[0])
@@ -179,7 +168,7 @@ class view_geo(utils):
 
         return pn.Column(
             pn.WidgetBox(
-                '## S2 L1C',
+                self.title,
                 pn.Column(
                     pn.Row(
                         pn.Row('### Band', pn_band),
