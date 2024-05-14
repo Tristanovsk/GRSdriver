@@ -170,10 +170,10 @@ class ViewSpectral(Utils):
             pn.WidgetBox(
                 self.title,
                 pn.Column(
-                    pn.Row(
-                        pn.Row('### Band', pn_band),
+                    pn.Row('### Band', pn_band),
+                            pn.Row(
                         pn.Row('### Date', pn_date),
-                        pn.Row('#### Basemap', pn_basemaps)
+                                pn.Row('#### Basemap', pn_basemaps)
                     ),
                     pn.Row(
                         pn.Row('', range_slider),
