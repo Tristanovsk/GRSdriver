@@ -14,7 +14,7 @@ working version for Landsat 8 and 9
 v1.0.4:
 add thermal bands for Landsat 8 and 9
 
-v1.05:
+v1.0.5:
 add subset tool
 
 '''
