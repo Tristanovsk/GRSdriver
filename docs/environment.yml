@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - default
 dependencies:
-  - gdal
+  - gdal<3.9
   - xarray
   - rioxarray
   - pyproj
