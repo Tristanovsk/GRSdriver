@@ -1,0 +1,27 @@
+name: grs
+channels:
+  - conda-forge
+  - default
+dependencies:
+  - gdal
+  - xarray
+  - rioxarray
+  - pyproj
+  - pip>=20.1  # pip is needed as dependency
+  - pip:
+    - geopandas
+    - jupyter
+    - cartopy
+    - importlib_resources
+    - xmltodict
+    - docopt
+    - netCDF4
+    - numba
+    - numpy
+    - pandas>=2.0.3
+    - eoreader
+    - pystac
+    - holoviews
+    - datashader
+    - bokeh
+    - -r requirements.txt
