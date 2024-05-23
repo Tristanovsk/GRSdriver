@@ -27,15 +27,15 @@ class SpatioTemp():
         :return: wkt of the box centered on provided coordinates
         '''
 
-        width,height = width/2 , height/2
+        #width,height = width/2 , height/2
         geod = pyproj.Geod(ellps=ellps)
 
         rect_diag = np.sqrt(width ** 2 + height ** 2)
 
-        azimuth1 = np.atan(width / height)
-        azimuth2 = np.atan(-width / height)
-        azimuth3 = np.atan(width / height) + np.pi  # first point + 180 degrees
-        azimuth4 = np.atan(-width / height) + np.pi  # second point + 180 degrees
+        azimuth1 = np.arctan(width / height)
+        azimuth2 = np.arctan(-width / height)
+        azimuth3 = np.arctan(width / height) + np.pi  # first point + 180 degrees
+        azimuth4 = np.arctan(-width / height) + np.pi  # second point + 180 degrees
 
         pt1_lon, pt1_lat, _ = geod.fwd(center_lon, center_lat, azimuth1 * 180 / np.pi, rect_diag)
         pt2_lon, pt2_lat, _ = geod.fwd(center_lon, center_lat, azimuth2 * 180 / np.pi, rect_diag)
