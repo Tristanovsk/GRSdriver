@@ -1,5 +1,5 @@
 
-<img src="docs/_static/GRS_driver.png" alt="GRSdriver_icon" width="100"/>
+<img src="docs/source/_static/GRS_driver.png" alt="GRSdriver_icon" width="100"/>
 
 GRSdriver documentation
 ===============================

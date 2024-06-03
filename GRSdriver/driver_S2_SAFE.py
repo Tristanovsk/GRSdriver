@@ -198,10 +198,20 @@ class Sentinel2Driver():
                 window = subset.to_crs(self.crs).bounds.values[0]
             else:
                 window = subset[0]
-        bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]),
-                                  resolution=self.resolution,
+
+            bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]),
+                                  pixel_size=self.resolution,
                                   window=window,
                                   **kwargs)
+            # Warning!!! fix for issue in eoreader when subsetting multibands
+            # needs to remove edge pixels
+            Nwl, Ny, Nx = bands.shape
+            bands=bands.isel(x=slice(2, Nx - 2), y=slice(2, Ny - 2))
+        else:
+            bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]),
+                                      pixel_size=self.resolution,
+                                      **kwargs)
+
 
         # fix for naming in differnt EOreader versions
         if 'z' in bands.coords:
@@ -438,7 +448,7 @@ class Sentinel2Driver():
             # compute angles from betas values for each detector and band
             self.lin2D(new_arr, x, y, mask, betas, detector_offset=detector_offset, scale_factor=100)
         else:
-            # compression in uint16 (NB: range 0-65535)
+            #
             new_arr = np.full((self.width, self.height), np.nan, dtype=np.float32)
             # compute angles from betas values for each detector and band
             self.lin2D(new_arr, x, y, mask, betas, detector_offset=detector_offset, scale_factor=1)
