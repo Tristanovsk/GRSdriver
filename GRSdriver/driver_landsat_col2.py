@@ -108,7 +108,9 @@ class LandsatDriver():
         self.load_bands(add_time=add_time, **kwargs)
         self.load_geom()
         self.load_mask()
-        self.prod = xr.merge([self.prod, self.geom,self.mask])
+        self.prod = xr.merge([self.prod,
+                              self.geom.interp(x=self.prod.x,y=self.prod.y),
+                              self.mask.interp(x=self.prod.x,y=self.prod.y)])
         del self.geom,self.mask
 
         # -----------------------------------------------------------
@@ -132,14 +134,15 @@ class LandsatDriver():
     def load_mask(self):
         self.mask = self.reader.load([RAW_CLOUDS], pixel_size=self.resolution
                                    ).squeeze().rename(
-                                    {RAW_CLOUDS: "flags_l1"}).astype(np.uint32)
+                                    {RAW_CLOUDS: "flags_l1"}).astype(np.uint32).drop_vars('band')
 
     def load_bands(self, add_time=True, **kwargs):
 
         # ----------------------------------
         # getting bands
         # ----------------------------------
-        bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]), resolution=self.resolution, **kwargs)
+        bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]),
+                                  pixel_size=self.resolution, **kwargs)
         # fix for naming in differnt EOreader versions
         if 'z' in bands.coords:
             bands = bands.rename({'z': 'bands'})
@@ -187,7 +190,7 @@ class LandsatDriver():
             geom.append(raster)
         geom = xr.merge(geom)
         geom['raa'] = (geom['saa'] - geom['vaa'])  # %360
-        self.geom = geom.drop_vars(['vaa', 'saa'])
+        self.geom = geom.drop_vars(['vaa', 'saa','band'])
 
     @staticmethod
     def scat_angle(sza, vza, azi):
