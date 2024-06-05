@@ -152,6 +152,7 @@ class LandsatDriver():
         # ----------------------------------
         self.prod = bands.assign_coords(wl=('bands', self.INFO.loc['Wavelength (nm)'])). \
             swap_dims({'bands': 'wl'}).drop({'band', 'bands', 'variable'})
+        self.prod['wl'] = self.prod.wl.astype(float)
         self.prod = self.prod.assign_coords(bandID=('wl', self.INFO.loc['ESA'].values))
         self.prod = self.prod.to_dataset(name='bands', promote_attrs=True)
         self.prod.attrs['wl_to_process'] = WAVELENGTH[self.band_tbp_idx]
