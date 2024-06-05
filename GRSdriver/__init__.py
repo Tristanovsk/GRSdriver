@@ -17,9 +17,12 @@ add thermal bands for Landsat 8 and 9
 v1.0.5:
 add subset tool
 
+v1.0.6:
+fix for TIR bands (get Brightness temperature alongside reflectance for vis-NIR-SWIR bands)
+
 '''
 
-__version__='1.0.5'
+__version__='1.0.6'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver
