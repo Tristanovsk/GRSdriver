@@ -50,6 +50,7 @@ class LandsatDriver():
     def __init__(self, image_path,
                  band_idx=[0, 1, 2, 3, 4, 5, 6, 7, 8],
                  band_tbp_idx=[0, 1, 2, 3, 4, 5, 7, 8],
+                 subset=None,
                  resolution=30,
                  verbose=False,
                  **kwargs):
@@ -59,6 +60,7 @@ class LandsatDriver():
         self.verbose = verbose
         self.band_idx = band_idx
         self.band_tbp_idx = band_tbp_idx
+        self.subset = subset
         self.resolution = resolution
         self.INFO = INFO[band_idx]
 
@@ -103,9 +105,11 @@ class LandsatDriver():
 
         self.SRFs = xr.open_dataset(srf_file)
 
-    def load_product(self, add_time=True, **kwargs):
+    def load_product(self,
+                     add_time=True,
+                     **kwargs):
 
-        self.load_bands(add_time=add_time, **kwargs)
+        self.load_bands(subset=self.subset,add_time=add_time, **kwargs)
         self.load_geom()
         self.load_mask()
         self.prod = xr.merge([self.prod,
@@ -136,13 +140,25 @@ class LandsatDriver():
                                    ).squeeze().rename(
                                     {RAW_CLOUDS: "flags_l1"}).astype(np.uint32).drop_vars('band')
 
-    def load_bands(self, add_time=True, **kwargs):
+    def load_bands(self,
+                   subset=None,
+                   add_time=True,
+                   **kwargs):
 
         # ----------------------------------
         # getting bands
         # ----------------------------------
+        window = None
+        if subset is not None:
+
+            if subset.dtype == 'geometry':
+                window = subset.to_crs(self.crs).bounds.values[0]
+            else:
+                window = subset[0]
         bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]),
-                                  pixel_size=self.resolution, **kwargs)
+                                  pixel_size=self.resolution,
+                                  window=window,
+                                  **kwargs)
         # fix for naming in differnt EOreader versions
         if 'z' in bands.coords:
             bands = bands.rename({'z': 'bands'})

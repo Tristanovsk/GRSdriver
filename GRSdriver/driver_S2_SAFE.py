@@ -184,7 +184,8 @@ class Sentinel2Driver():
         self.prod.attrs['mean_solar_zenith_angle'] = self.mean_sza
         self.prod.attrs['acquisition_date'] = self.prod.attrs['DATATAKE_1_DATATAKE_SENSING_START']
 
-    def load_bands(self, subset=None,
+    def load_bands(self,
+                   subset=None,
                    add_time=True,
                    **kwargs):
 
