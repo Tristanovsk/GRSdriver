@@ -48,7 +48,9 @@ conda install -c conda-forge gdal
 .. code::
 
 conda activate grssuite
+
 conda install -c pyviz holoviews panel
+
 pip install .
 
 
@@ -57,8 +59,10 @@ pip install .
 .. code::
 
 pip install holoviews datashader cartopy
+
 conda install -c conda-forge jupyterlab
-jupyter labextension install @pyviz/jupyterlab_pyviz
+
+
 
 
 You are done.
