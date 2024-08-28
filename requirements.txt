@@ -11,4 +11,6 @@ pandas>=2.0.3
 pyproj
 pystac
 rioxarray>=0.15.0
-
+geopandas
+fiona
+pyyaml
