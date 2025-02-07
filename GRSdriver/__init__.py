@@ -20,9 +20,11 @@ add subset tool
 v1.0.6:
 fix for TIR bands (get Brightness temperature alongside reflectance for vis-NIR-SWIR bands)
 
+v1.0.7:
+fix for new version xarray >=2024
 '''
 
-__version__='1.0.6'
+__version__='1.0.7'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver
