@@ -43,5 +43,6 @@ dependencies = { file = ["requirements.txt"] }
 dev = ["black", "bumpver", "isort", "pip-tools", "pytest"]
 
 [project.urls]
+Documentation = "https://grsdriver.readthedocs.io"
 Homepage = "https://github.com/Tristanovsk/GRSdriver"
 
