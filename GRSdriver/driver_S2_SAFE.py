@@ -258,8 +258,8 @@ class Sentinel2Driver():
 
     @staticmethod
     def set_crs(arr, crs):
-        arr.rio.set_crs(crs, inplace=True)
-        arr.rio.write_crs(inplace=True)
+        #arr.rio.set_crs(crs, inplace=True)
+        arr.rio.write_crs(crs, inplace=True)
 
     def get_raw_angles(self):
 

@@ -1,4 +1,4 @@
-GDAL<3.9
+
 importlib_resources
 docopt
 eoreader>=0.21.1

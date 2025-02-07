@@ -124,7 +124,7 @@ class LandsatDriver():
         for wl, band in self.prod.bands.groupby('wl'):
             # convert into reflectance vis-NIR-SWIR bands (upper limit 3000nm)
             if float(wl) <= 3000:
-                self.prod['bands'].loc[{'wl':wl}]= band / mus
+                self.prod['bands'].loc[{'wl':[wl]}]= band / mus
 
 
         self.prod.attrs = self.prod.attrs
