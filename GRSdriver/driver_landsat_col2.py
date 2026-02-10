@@ -114,7 +114,7 @@ class LandsatDriver():
         self.load_mask()
         self.prod = xr.merge([self.prod,
                               self.geom.interp(x=self.prod.x,y=self.prod.y),
-                              self.mask.interp(x=self.prod.x,y=self.prod.y)])
+                              self.mask.interp(x=self.prod.x,y=self.prod.y)],compat='override')
         del self.geom,self.mask
 
         # -----------------------------------------------------------
@@ -174,7 +174,8 @@ class LandsatDriver():
         self.prod.attrs['wl_to_process'] = WAVELENGTH[self.band_tbp_idx]
 
         # add spectral response function
-        self.prod = xr.merge([self.prod, self.SRFs.sel(wl=self.prod.wl.values,method="nearest")]).drop_vars('bandID')
+        self.prod = xr.merge([self.prod, self.SRFs.sel(wl=self.prod.wl.values,method="nearest")],
+                             compat='override').drop_vars('bandID')
 
         # compute central wavelengths
         wl_true = []
@@ -183,7 +184,7 @@ class LandsatDriver():
             wl_true.append((srf.wl_hr * srf).integrate('wl_hr') / srf.integrate('wl_hr'))
         wl_true = xr.concat(wl_true, dim='wl')
         wl_true.name = 'wl_true'
-        self.prod = xr.merge([self.prod, wl_true])
+        self.prod = xr.merge([self.prod, wl_true],compat='override')
 
         # add time
         if add_time:
@@ -205,7 +206,7 @@ class LandsatDriver():
 
             raster.name = geom_[0]
             geom.append(raster)
-        geom = xr.merge(geom)
+        geom = xr.merge(geom,compat='override')
         geom['raa'] = (geom['saa'] - geom['vaa'])  # %360
         self.geom = geom.drop_vars(['vaa', 'saa','band'])
 

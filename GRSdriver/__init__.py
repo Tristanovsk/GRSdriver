@@ -22,9 +22,12 @@ fix for TIR bands (get Brightness temperature alongside reflectance for vis-NIR-
 
 v1.0.7:
 fix for new version xarray >=2024
+
+v1.0.8 (2025-02-10):
+fix xarray merge policy: compat='override'
 '''
 
-__version__='1.0.7'
+__version__='1.0.8'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver

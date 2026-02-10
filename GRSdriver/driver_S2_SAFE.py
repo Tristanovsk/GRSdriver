@@ -169,7 +169,7 @@ class Sentinel2Driver():
         self.load_geom()
         #if self.resolution_angle != self.resolution:
         self.geom=self.geom.interp(x=self.prod.x, y=self.prod.y, method='nearest')
-        self.prod = xr.merge([self.prod, self.geom])
+        self.prod = xr.merge([self.prod, self.geom],compat='override')
         del self.geom
 
         # add native metadata
@@ -228,7 +228,7 @@ class Sentinel2Driver():
         self.prod.attrs['wl_to_process'] = WAVELENGTH[self.band_tbp_idx]
 
         # add spectral response function
-        self.prod = xr.merge([self.prod, self.SRFs.sel(wl=self.prod.wl.values)]).drop_vars('bandID')
+        self.prod = xr.merge([self.prod, self.SRFs.sel(wl=self.prod.wl.values)],compat='override').drop_vars('bandID')
 
         # compute central wavelengths
         wl_true = []
@@ -237,7 +237,7 @@ class Sentinel2Driver():
             wl_true.append((srf.wl_hr * srf).integrate('wl_hr') / srf.integrate('wl_hr'))
         wl_true = xr.concat(wl_true, dim='wl')
         wl_true.name = 'wl_true'
-        self.prod = xr.merge([self.prod, wl_true])
+        self.prod = xr.merge([self.prod, wl_true],compat='override')
 
         # add time
         if add_time:
