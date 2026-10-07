@@ -34,7 +34,6 @@ from eoreader.keywords import TO_REFLECTANCE
 from eoreader.utils import use_dask
 
 from . import __package__
-from .utils import stack_bands
 
 opj = os.path.join
 
@@ -262,7 +261,7 @@ class LandsatDriver():
         # getting bands
         # ----------------------------------
         window = self._get_window(subset)
-        bands = stack_bands(self.reader, list(BAND_NAMES_EOREADER[self.band_idx]),
+        bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]),
                                   pixel_size=self.resolution,
                                   window=window,
                                   **kwargs)
