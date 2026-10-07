@@ -37,3 +37,11 @@ v1.0.9:
     - Landsat: valid angle pixels at the swath edges are no longer set to NaN
     - angles stored as float32, Landsat ``flags_l1`` as uint32
     - improved docstrings
+
+Unreleased (develop):
+    - lower memory use for large rasters (Sentinel-2): bands loaded one by one into a preallocated array,
+      EOReader temporaries freed band by band, nearest resampling of the angles without full-size temporaries
+    - Sentinel-2: ``lazy_geom`` option to keep ``vza`` and ``raa`` as dask arrays computed block by block
+      from the ``resolution_angle`` grid (peak memory 7.0 GB -> 3.7 GB for a full tile at 20 m)
+    - documentation: new Methods page with the equations of the reflectance, central wavelengths,
+      geometry and memory footprint

@@ -32,6 +32,7 @@ today_fmt = "%Y-%m-%d"
 extensions = [
     'autoapi.extension',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.mathjax',
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
     'sphinx.ext.duration',
