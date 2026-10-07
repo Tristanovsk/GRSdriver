@@ -38,7 +38,7 @@ v1.0.9:
     - angles stored as float32, Landsat ``flags_l1`` as uint32
     - improved docstrings
 
-Unreleased (develop):
+v1.0.10:
     - lower memory use for large rasters (Sentinel-2): bands loaded one by one into a preallocated array,
       EOReader temporaries freed band by band, nearest resampling of the angles without full-size temporaries
     - Sentinel-2: ``lazy_geom`` option to keep ``vza`` and ``raa`` as dask arrays computed block by block
