@@ -10,6 +10,10 @@ from affine import Affine
 import geopandas as gpd
 
 class SpatioTemp():
+    '''
+    Spatial helpers: build a box around a point (e.g. to define a ``subset``
+    of the drivers), rasterize shapes and clip rasters.
+    '''
 
     def wktbox(self,
                center_lon,
@@ -48,6 +52,13 @@ class SpatioTemp():
         return wkt_poly
 
     def transform_from_latlon(self, lat, lon):
+        '''
+        Affine transform of a regular grid from its 1D coordinates.
+
+        :param lat: 1D latitude (or y) coordinates
+        :param lon: 1D longitude (or x) coordinates
+        :return: ``affine.Affine`` transform
+        '''
         lat = np.asarray(lat)
         lon = np.asarray(lon)
         trans = Affine.translation(lon[0], lat[0])
@@ -56,39 +67,25 @@ class SpatioTemp():
 
     def rasterize(self, shapes, coords, latitude='lat', longitude='lon',
                   fill=np.nan, **kwargs):
-        """Rasterize a list of (geometry, fill_value) tuples onto the given
-        xray coordinates. This only works for 1d latitude and longitude
-        arrays.
+        '''
+        Rasterize a list of (geometry, fill_value) tuples onto the given xarray
+        coordinates. This only works for 1D latitude and longitude arrays.
 
-        usage:
-        -----
-        1. read shapefile to geopandas.GeoDataFrame
-              `states = gpd.read_file(shp_dir)`
-        2. encode the different shapefiles that capture those lat-lons as different
-            numbers i.e. 0.0, 1.0 ... and otherwise np.nan
-              `shapes = (zip(states.geometry, range(len(states))))`
-        3. Assign this to a new coord in your original xarray.DataArray
-              `ds['states'] = rasterize(shapes, ds.coords, longitude='X', latitude='Y')`
+        Usage::
 
-        arguments:
-        ---------
-        : **kwargs (dict): passed to `rasterio.rasterize` function
+            states = gpd.read_file(shp_dir)
+            shapes = zip(states.geometry, range(len(states)))
+            ds['states'] = rasterize(shapes, ds.coords, longitude='X', latitude='Y')
 
-        attrs:
-        -----
-        :transform (affine.Affine): how to translate from latlon to ...?
-        :raster (numpy.ndarray): use rasterio.features.rasterize fill the values
-          outside the .shp file with np.nan
-        :spatial_coords (dict): dictionary of {"X":xr.DataArray, "Y":xr.DataArray()}
-          with "X", "Y" as keys, and xr.DataArray as values
-
-        returns:
-        -------
-        :(xr.DataArray): DataArray with `values` of nan for points outside shapefile
-          and coords `Y` = latitude, 'X' = longitude.
-
-
-        """
+        :param shapes: iterable of (geometry, value) pairs
+        :param coords: coordinates of the target grid (e.g. ``ds.coords``)
+        :param latitude: name of the latitude (or y) coordinate
+        :param longitude: name of the longitude (or x) coordinate
+        :param fill: value of the pixels outside the shapes
+        :param kwargs: passed to ``rasterio.features.rasterize``
+        :return: DataArray (latitude, longitude) with the value of the shape
+            covering each pixel, ``fill`` elsewhere
+        '''
         # transform = transform_from_latlon(coords[latitude], coords[longitude])
         out_shape = (len(coords[latitude]), len(coords[longitude]))
         raster = features.rasterize(shapes, out_shape=out_shape,

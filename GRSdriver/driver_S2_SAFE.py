@@ -1,3 +1,11 @@
+'''
+Driver for Sentinel-2 MSI Level-1C products (SAFE format).
+
+Loads the top-of-atmosphere reflectance bands with EOReader and computes the
+per-band sun and viewing geometry from the granule metadata
+(see :class:`Sentinel2Driver`).
+'''
+
 import glob
 import os
 import xml.etree.ElementTree as ET
@@ -23,8 +31,10 @@ from eoreader.env_vars import USE_DASK
 
 from . import __package__
 
-# EOReader uses dask if == 1
-os.environ[USE_DASK] = "0"
+# EOReader uses dask if == 1. Default to "0": with dask, EOReader computes and writes
+# each cleaned band to its disk cache through a much slower path (~3x for a full S2 tile).
+# Set EOREADER_USE_DASK=1 beforehand to get lazy (dask-backed) products.
+os.environ.setdefault(USE_DASK, "0")
 
 opj = os.path.join
 BAND_NAMES = np.array(['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'])
@@ -46,6 +56,57 @@ INFO = pd.DataFrame({'bandId': range(13),
 
 
 class Sentinel2Driver():
+    '''
+    Load a Sentinel-2 L1C image (SAFE format) as an xarray Dataset with
+    TOA reflectance, spectral response functions and per-band viewing geometry.
+
+    The viewing angles are provided in the metadata on a coarse 5 km grid for
+    each band and each detector. For each band and detector, a plane is fitted
+    to these values (orthogonal distance regression); the plane of the detector
+    seen by each pixel (detector footprint mask ``DETFOO``) is then evaluated on
+    the ``resolution_angle`` grid. The result is resampled (nearest neighbour)
+    on the grid of the bands.
+
+    Usage::
+
+        l1c = Sentinel2Driver('S2A_MSIL1C_..._.SAFE', resolution=20)
+        l1c.load_product()
+        prod = l1c.prod
+
+    Content of ``prod`` after :meth:`load_product`:
+
+    - ``bands`` (wl, y, x): TOA reflectance
+    - ``vza`` (wl, y, x): viewing zenith angle (deg)
+    - ``raa`` (wl, y, x): relative azimuth, (viewing - solar azimuth) % 360 (deg)
+    - ``sza`` (y, x): solar zenith angle (deg)
+    - ``SRF`` (wl, wl_hr): spectral response function of each band
+    - ``wl_true`` (wl): central wavelength computed from the SRF (nm)
+    - coordinates ``wl`` (nominal wavelength, nm), ``x``, ``y`` (product CRS)
+      and ``time``; native metadata and solar irradiance in ``attrs``.
+
+    EOReader returns numpy arrays by default: with dask enabled, EOReader
+    computes and writes each band in its cache through a much slower path.
+    Set the environment variable ``EOREADER_USE_DASK=1`` before importing
+    GRSdriver to get a lazy (dask-backed) product; the geometry is then chunked
+    as the bands.
+
+    :param imageSAFE: path to the ``.SAFE`` directory of the L1C product
+    :param band_idx: indices of the bands to load, in
+        ``B01, B02, B03, B04, B05, B06, B07, B08, B8A, B09, B10, B11, B12``
+        (0 to 12)
+    :param band_tbp_idx: indices of the bands to be processed downstream
+        (stored as ``prod.attrs['wl_to_process']``); by default all but
+        B09 (water vapour) and B10 (cirrus)
+    :param subset: optional spatial subset: a ``geopandas.GeoSeries`` (any CRS,
+        its bounding box is used), or a sequence whose first element is passed as
+        ``window`` to EOReader
+    :param resolution: pixel size (m) of the output bands
+    :param resolution_angle: pixel size (m) of the grid on which the viewing
+        angles are computed: 10, 20 or 60 (coarser is faster and lighter)
+    :param verbose: print progress and fitting reports
+    :param kwargs: passed to ``eoreader.reader.Reader.open``
+    '''
+
     def __init__(self, imageSAFE,
                  band_idx=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
                  band_tbp_idx=[0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12],
@@ -163,12 +224,24 @@ class Sentinel2Driver():
     def load_product(self,
                      add_time=True,
                      **kwargs):
+        '''
+        Load bands and geometry into ``self.prod`` and add the native metadata
+        as attributes (``satellite``, ``tile``, ``solar_irradiance``,
+        ``mean_solar_zenith_angle``, ``acquisition_date``...).
+
+        :param add_time: add the acquisition date as ``time`` coordinate
+        :param kwargs: passed to ``eoreader`` ``stack`` (see :meth:`load_bands`)
+        '''
 
         self.load_bands(subset=self.subset, add_time=add_time, **kwargs)
 
         self.load_geom()
-        #if self.resolution_angle != self.resolution:
-        self.geom=self.geom.interp(x=self.prod.x, y=self.prod.y, method='nearest')
+        # nearest-neighbour resampling onto the band grid as a plain index lookup
+        # (much faster than interp and lazy when the geometry is chunked)
+        self.geom = self.geom.sel(x=self.prod.x.values, y=self.prod.y.values, method='nearest'
+                                  ).assign_coords(x=self.prod.x, y=self.prod.y)
+        if self.prod.bands.chunks is not None:
+            self.geom = self.geom.chunk({dim: self.prod.bands.chunksizes[dim] for dim in ('y', 'x')})
         self.prod = xr.merge([self.prod, self.geom],compat='override')
         del self.geom
 
@@ -188,6 +261,16 @@ class Sentinel2Driver():
                    subset=None,
                    add_time=True,
                    **kwargs):
+        '''
+        Load the TOA reflectance bands into ``self.prod`` (variable ``bands``)
+        along with the spectral response functions (``SRF``) and the central
+        wavelengths (``wl_true``).
+
+        :param subset: spatial subset (see :class:`Sentinel2Driver`); with a subset,
+            the 2 edge pixels are removed to work around an EOReader issue
+        :param add_time: add the acquisition date as ``time`` coordinate
+        :param kwargs: passed to ``eoreader`` ``stack``
+        '''
 
         # ----------------------------------
         # getting bands
@@ -247,8 +330,10 @@ class Sentinel2Driver():
     @staticmethod
     def parse_angular_grid_node(node):
         '''
-        Internal parsing function for angular grids
-        :return:
+        Parse an angular grid of the granule metadata (``MTD_TL.xml``).
+
+        :param node: XML element containing a ``Values_List``
+        :return: 2D numpy array of the angles (deg)
         '''
         values = []
         for c in node.find('Values_List'):
@@ -258,10 +343,23 @@ class Sentinel2Driver():
 
     @staticmethod
     def set_crs(arr, crs):
+        '''
+        Write ``crs`` in ``arr`` (in place) with rioxarray.
+
+        :param arr: xarray DataArray or Dataset
+        :param crs: coordinate reference system
+        '''
         #arr.rio.set_crs(crs, inplace=True)
         arr.rio.write_crs(crs, inplace=True)
 
     def get_raw_angles(self):
+        '''
+        Read the sun and viewing angle grids of the granule metadata.
+
+        Sets ``raw_sun_ang`` (``sza``, ``sazi``), ``raw_view_ang``
+        (``vza``, ``vazi`` per ``bandId`` and ``detectorId``), ``detector_num``
+        and the mean solar angles ``mean_sza`` and ``mean_sun_azi``.
+        '''
 
         minx, miny, maxx, maxy = self.bounds.values[0]
         with open(self.xml_granule) as xml_file:
@@ -323,17 +421,41 @@ class Sentinel2Driver():
 
     def load_geom(self,
                   method='linear'):
+        '''
+        Compute sun and viewing angles on the ``resolution_angle`` grid
+        into ``self.geom`` (see :meth:`get_all_band_angles`).
+
+        :param method: interpolation method of the sun angles
+        '''
 
         self.get_raw_angles()
         self.get_all_band_angles( method=method)
 
     @staticmethod
     def linfit(beta, x):
+        '''
+        Plane model ``beta[0] * x + beta[1] * y + beta[2]``.
+
+        :param beta: plane coefficients
+        :param x: coordinates stacked as ``(x, y)``
+        '''
         return beta[0] * x[0] + beta[1] * x[1] + beta[2]
 
     @staticmethod
-    @jit(nopython=True)  # "uint16[:,:](float64[:],float64[:],float64[:,:],float64[:,:],intp,intp)",
+    @jit(nopython=True, cache=True)  # "uint16[:,:](float64[:],float64[:],float64[:,:],float64[:,:],intp,intp)",
     def lin2D(arr, x, y, mask, betas, detector_offset=0, scale_factor=100):
+        '''
+        Fill ``arr`` (in place, numba compiled) with the plane of the detector
+        seen by each pixel; pixels with no detector are left untouched.
+
+        :param arr: 2D output array (y, x)
+        :param x: x coordinates of the columns
+        :param y: y coordinates of the rows
+        :param mask: detector number of each pixel (y, x)
+        :param betas: plane coefficients of each detector (detector, 3)
+        :param detector_offset: number of the first detector in ``betas``
+        :param scale_factor: factor applied to the values (for integer compression)
+        '''
 
         Nx, Ny = mask.shape
 
@@ -348,6 +470,15 @@ class Sentinel2Driver():
                     arr[ii, jj] = (val * scale_factor)
 
     def data_fitting(self, x0, y0, arr):
+        '''
+        Fit a plane to the angle grid ``arr`` with orthogonal distance regression,
+        NaN values being ignored.
+
+        :param x0: x coordinates of ``arr``
+        :param y0: y coordinates of ``arr``
+        :param arr: 2D DataArray of the angles
+        :return: plane coefficients (see :meth:`linfit`)
+        '''
         # ---------------------------------
         # ODR multilinear regression
         # ---------------------------------
@@ -383,6 +514,15 @@ class Sentinel2Driver():
     def get_detector_mask(self, bandId=0,
                           resolution=20,
                           detector_mask_name='DETFOO'):
+        '''
+        Rasterize the detector footprint of a band: each pixel gets the number
+        of the detector it is seen by.
+
+        :param bandId: band index (0 to 12)
+        :param resolution: pixel size (m) of the mask
+        :param detector_mask_name: name of the mask in the L1C product
+        :return: 2D numpy array of the detector numbers
+        '''
 
         if self.processing_baseline < 4:
             mask_df = self._open_mask(detector_mask_name, BAND_ID[bandId])
@@ -405,19 +545,27 @@ class Sentinel2Driver():
                                 resolution=20,
                                 detector_mask_name='DETFOO',
                                 compress=False,
+                                mask=None,
                                 ):
         '''
+        Compute a viewing angle of one band on the ``resolution_angle`` grid:
+        a plane is fitted for each detector, then evaluated on the pixels
+        of that detector.
 
-        :param xarr:
-        :param bandId:
-        :param resolution:
-        :param detector_mask_name:
-
-        :return:
+        :param xarr: raw angle grids (bandId, detectorId, y, x), e.g. ``raw_view_ang.vza``
+        :param bandId: band index (0 to 12)
+        :param resolution: pixel size (m) of the detector mask
+        :param detector_mask_name: name of the detector mask in the L1C product
+        :param compress: experimental, store the angles as int16 scaled by 100
+        :param mask: detector mask already loaded with :meth:`get_detector_mask`
+            (loaded here if None)
+        :return: 2D numpy array of the angles (deg)
         '''
 
         detector_offset = int(xarr.detectorId.min())
-        mask = self.get_detector_mask(bandId=bandId, resolution=resolution)
+        if mask is None:
+            mask = self.get_detector_mask(bandId=bandId, resolution=resolution,
+                                          detector_mask_name=detector_mask_name)
 
         # TODO check how to avoid taking the nodata value "0" when coarsening the raster
         # TODO for the moment this induces bad detector number at the edge of the image swath
@@ -454,14 +602,17 @@ class Sentinel2Driver():
             # compute angles from betas values for each detector and band
             self.lin2D(new_arr, x, y, mask, betas, detector_offset=detector_offset, scale_factor=1)
 
-        del mask
         return new_arr
 
     @staticmethod
     def scat_angle(sza, vza, azi):
         '''
-        self.azi: azimuth in rad for convention azi=180 when sun-sensor in opposition
-        :return: scattering angle in deg
+        Scattering angle from the sun and viewing angles.
+
+        :param sza: solar zenith angle (deg)
+        :param vza: viewing zenith angle (deg)
+        :param azi: relative azimuth (deg), convention azi=180 when sun and sensor are in opposition
+        :return: scattering angle (deg)
         '''
 
         sza = np.radians(sza)
@@ -472,6 +623,13 @@ class Sentinel2Driver():
         return np.degrees(ang)
 
     def get_all_band_angles(self, method='linear'):
+        '''
+        Fill ``self.geom`` with ``vza`` and ``raa`` (wl, y, x) for each band of
+        ``band_idx`` and ``sza`` (y, x), on the ``resolution_angle`` grid (float32).
+        :meth:`get_raw_angles` must have been called before.
+
+        :param method: interpolation method of the sun angles
+        '''
 
         new_x, new_y = self.new_x, self.new_y
         band_idx = self.band_idx
@@ -495,17 +653,25 @@ class Sentinel2Driver():
         # dx.name = 'dx'
         # dy.name = 'dy'
 
-        new_vza, new_vazi = [], []
+        new_vza = np.empty((len(band_idx), self.width, self.height), dtype=np.float32)
+        raa = np.empty((len(band_idx), self.width, self.height), dtype=np.float32)
         for ibandId, bandId in enumerate(band_idx):
             if self.verbose:
                 print('Band number ' + str(bandId) + ' is being loaded')
-            new_vza.append(self.get_band_angle_as_numpy(raw_vza, bandId=bandId, resolution=self.resolution_angle))
-            new_vazi.append(self.get_band_angle_as_numpy(raw_vazi, bandId=bandId, resolution=self.resolution_angle))
-        raa = (np.array(new_vazi) - new_sun_ang.sazi.values) % 360
+            # the detector mask is read once and shared by zenith and azimuth
+            mask = self.get_detector_mask(bandId=bandId, resolution=self.resolution_angle)
+            new_vza[ibandId] = self.get_band_angle_as_numpy(raw_vza, bandId=bandId,
+                                                            resolution=self.resolution_angle, mask=mask)
+            raa[ibandId] = self.get_band_angle_as_numpy(raw_vazi, bandId=bandId,
+                                                        resolution=self.resolution_angle, mask=mask)
+            del mask
+        # relative azimuth computed in place: raa = (vazi - sazi) % 360
+        raa -= new_sun_ang.sazi.values.astype(np.float32)
+        raa %= 360
 
-        self.geom['vza'] = xr.DataArray(np.array(new_vza), dims=['wl', 'y', 'x'])
+        self.geom['vza'] = xr.DataArray(new_vza, dims=['wl', 'y', 'x'])
         self.geom['raa'] = xr.DataArray(raa, dims=['wl', 'y', 'x'])
-        self.geom['sza'] = xr.DataArray(new_sun_ang.sza.values, dims=['y', 'x'])
+        self.geom['sza'] = xr.DataArray(new_sun_ang.sza.values.astype(np.float32), dims=['y', 'x'])
         #
         # xr.Dataset(data_vars=dict(vza=(['wl', 'y', 'x'], )),
         #                      coords=dict(wl=self.INFO.loc['Wavelength (nm)'],
@@ -522,7 +688,7 @@ class Sentinel2Driver():
         self.geom['y']=self.new_y
         self.set_crs(self.geom, self.crs)
 
-        del new_vza, new_vazi, raa, new_sun_ang
+        del new_vza, raa, new_sun_ang
 
         return
 

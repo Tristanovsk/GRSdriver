@@ -19,3 +19,21 @@ v1.0.4:
 
 v1.0.5:
     - add subset tool
+
+v1.0.6:
+    - fix for TIR bands (get brightness temperature alongside reflectance for vis-NIR-SWIR bands)
+
+v1.0.7:
+    - fix for new version xarray >=2024
+
+v1.0.8:
+    - fix xarray merge policy: compat='override'
+
+v1.0.9:
+    - faster loading: Sentinel-2 detector masks read once per band, nearest resampling of the angles
+      by index lookup; Landsat angles and flags interpolated only when their grid differs from the bands,
+      flags loaded once and on the subset window, vectorized reflectance conversion
+    - dask-backed products with ``EOREADER_USE_DASK=1`` (eager loading stays the default, as it is faster with EOReader)
+    - Landsat: valid angle pixels at the swath edges are no longer set to NaN
+    - angles stored as float32, Landsat ``flags_l1`` as uint32
+    - improved docstrings

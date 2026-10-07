@@ -25,9 +25,14 @@ fix for new version xarray >=2024
 
 v1.0.8 (2025-02-10):
 fix xarray merge policy: compat='override'
+
+v1.0.9 (2026-10-07):
+speed up loading and enable dask-backed products (EOREADER_USE_DASK=1),
+Landsat: keep valid angle pixels at swath edges, flags_l1 as uint32,
+angles in float32, improved docstrings
 '''
 
-__version__='1.0.8'
+__version__='1.0.9'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver
