@@ -1,13 +1,63 @@
 
 
+import gc
+
 import numpy as np
 import pandas as pd
 import xarray as xr
+import rioxarray  # noqa: F401 (rio accessor)
 
 import pyproj
 from rasterio import features
 from affine import Affine
 import geopandas as gpd
+from eoreader.utils import use_dask
+
+
+def stack_bands(reader, bands, **kwargs):
+    '''
+    Memory-efficient equivalent of EOReader ``stack``: the bands are loaded one
+    by one into a preallocated float32 array (bands, y, x), instead of loading
+    them all before copying them into the stack (about twice less memory).
+
+    EOReader ``stack`` is used as is when EOReader works with dask (lazy
+    product), with a ``window`` (the windowed bands are not on the same grid, EOReader
+    aligns them), when a stack-only argument (``stack_path``, ``save_as_int``) is given
+    or when the bands are not on the same grid.
+
+    :param reader: EOReader product
+    :param bands: names of the bands to load
+    :param kwargs: passed to ``reader.load`` (``pixel_size``, ``window``...)
+    :return: DataArray (bands, y, x) with the attributes of the product
+    '''
+    if use_dask() or kwargs.get('window') is not None or \
+            kwargs.get('stack_path') or kwargs.get('save_as_int'):
+        return reader.stack(bands, **kwargs)
+    kwargs.pop('stack_path', None)
+    kwargs.pop('save_as_int', None)
+
+    stack = None
+    for iband, band in enumerate(bands):
+        band_xds = reader.load([band], **kwargs)
+        band_xda = next(iter(band_xds.data_vars.values())).squeeze('band', drop=True)
+        if stack is None:
+            stack = xr.DataArray(np.empty((len(bands),) + band_xda.shape, dtype=np.float32),
+                                 dims=('bands',) + band_xda.dims,
+                                 coords=band_xda.coords,
+                                 attrs=band_xds.attrs)
+        elif not (band_xda.x.equals(stack.x) and band_xda.y.equals(stack.y)):
+            # bands on different grids (e.g. with a window): let EOReader align them
+            del stack, band_xds, band_xda
+            gc.collect()
+            return reader.stack(bands, **kwargs)
+        stack.values[iband] = band_xda.values
+        # EOReader temporaries are kept in reference cycles: free them before the next band
+        del band_xds, band_xda
+        gc.collect()
+    stack.attrs['long_name'] = ' '.join(bands)
+    stack.rio.write_nodata(kwargs.get('nodata', reader.nodata), encoded=True, inplace=True)
+    return stack
+
 
 class SpatioTemp():
     '''

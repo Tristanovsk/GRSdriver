@@ -6,11 +6,13 @@ per-band sun and viewing geometry from the granule metadata
 (see :class:`Sentinel2Driver`).
 '''
 
+import gc
 import glob
 import os
 import xml.etree.ElementTree as ET
 
 import numpy as np
+import dask.array as da
 from numba import jit
 
 import pandas as pd
@@ -30,6 +32,7 @@ from eoreader.reader import Reader
 from eoreader.env_vars import USE_DASK
 
 from . import __package__
+from .utils import stack_bands
 
 # EOReader uses dask if == 1. Default to "0": with dask, EOReader computes and writes
 # each cleaned band to its disk cache through a much slower path (~3x for a full S2 tile).
@@ -53,6 +56,13 @@ INFO = pd.DataFrame({'bandId': range(13),
                      'Wavelength (nm)': WAVELENGTH,
                      'Band width (nm)': BAND_WIDTH,
                      'Resolution (m)': NATIVE_RESOLUTION}).set_index('bandId').T
+
+
+def _take_yx(iy, ix, src):
+    '''
+    Block of a lazy nearest-neighbour lookup: ``src[..., iy, :][..., ix]``.
+    '''
+    return src.take(iy, axis=-2).take(ix, axis=-1)
 
 
 class Sentinel2Driver():
@@ -103,6 +113,13 @@ class Sentinel2Driver():
     :param resolution: pixel size (m) of the output bands
     :param resolution_angle: pixel size (m) of the grid on which the viewing
         angles are computed: 10, 20 or 60 (coarser is faster and lighter)
+    :param lazy_geom: keep ``vza`` and ``raa`` as dask arrays, computed block by
+        block from the ``resolution_angle`` grid when they are used, instead of
+        storing them at the band resolution (saves ``2 x 4 x Nwl x Ny x Nx`` bytes,
+        e.g. 3.1 GB for 13 bands at 20 m, 12.5 GB at 10 m); always the case when
+        the bands are dask-backed
+    :param geom_chunks: size (pixels) of the ``y`` and ``x`` chunks of the lazy
+        geometry when the bands are not dask-backed
     :param verbose: print progress and fitting reports
     :param kwargs: passed to ``eoreader.reader.Reader.open``
     '''
@@ -113,6 +130,8 @@ class Sentinel2Driver():
                  subset=None,
                  resolution=20,
                  resolution_angle=60,
+                 lazy_geom=False,
+                 geom_chunks=1024,
                  verbose=False,
                  **kwargs):
 
@@ -124,6 +143,8 @@ class Sentinel2Driver():
         self.subset = subset
         self.resolution_angle = resolution_angle
         self.resolution = resolution
+        self.lazy_geom = lazy_geom
+        self.geom_chunks = geom_chunks
         self.INFO = INFO[band_idx]
 
         # -----------------------------------------------------
@@ -236,12 +257,7 @@ class Sentinel2Driver():
         self.load_bands(subset=self.subset, add_time=add_time, **kwargs)
 
         self.load_geom()
-        # nearest-neighbour resampling onto the band grid as a plain index lookup
-        # (much faster than interp and lazy when the geometry is chunked)
-        self.geom = self.geom.sel(x=self.prod.x.values, y=self.prod.y.values, method='nearest'
-                                  ).assign_coords(x=self.prod.x, y=self.prod.y)
-        if self.prod.bands.chunks is not None:
-            self.geom = self.geom.chunk({dim: self.prod.bands.chunksizes[dim] for dim in ('y', 'x')})
+        self.geom = self._nearest_to_band_grid(self.geom)
         self.prod = xr.merge([self.prod, self.geom],compat='override')
         del self.geom
 
@@ -256,6 +272,47 @@ class Sentinel2Driver():
         self.prod.attrs['mean_solar_azimuth'] = self.mean_sun_azi
         self.prod.attrs['mean_solar_zenith_angle'] = self.mean_sza
         self.prod.attrs['acquisition_date'] = self.prod.attrs['DATATAKE_1_DATATAKE_SENSING_START']
+
+    def _nearest_to_band_grid(self, geom):
+        '''
+        Nearest-neighbour resampling of ``geom`` onto the (x, y) grid of ``self.prod``
+        as a plain index lookup (much faster than interp).
+
+        Eager mode: each 2D slice is filled in a preallocated array (no full-size
+        temporaries). Lazy mode (``lazy_geom`` or dask-backed bands): dask arrays
+        whose blocks are looked up in the ``resolution_angle`` grid when computed,
+        chunked as the bands (or by ``geom_chunks``), all ``wl`` in one chunk.
+
+        :param geom: Dataset on the ``resolution_angle`` grid
+        :return: ``geom`` on the grid of ``self.prod``
+        '''
+        x, y = self.prod.x, self.prod.y
+        ix = geom.indexes['x'].get_indexer(x.values, method='nearest')
+        iy = geom.indexes['y'].get_indexer(y.values, method='nearest')
+        lazy = self.lazy_geom or self.prod.bands.chunks is not None
+        if lazy:
+            if self.prod.bands.chunks is not None:
+                chunks = {dim: self.prod.bands.chunksizes[dim] for dim in ('y', 'x')}
+            else:
+                chunks = {'y': self.geom_chunks, 'x': self.geom_chunks}
+            iy_ = da.from_array(iy, chunks=chunks['y'])
+            ix_ = da.from_array(ix, chunks=chunks['x'])
+
+        out = xr.Dataset(coords=geom.drop_dims(['x', 'y']).coords, attrs=geom.attrs)
+        for name, arr in geom.data_vars.items():
+            arr = arr.transpose(..., 'y', 'x')
+            src = arr.values
+            if lazy:
+                lead = 'abcdefgh'[:src.ndim - 2]
+                new = da.blockwise(_take_yx, lead + 'yx', iy_, 'y', ix_, 'x', src=src,
+                                   new_axes=dict(zip(lead, src.shape[:-2])), dtype=src.dtype)
+            else:
+                new = np.empty(src.shape[:-2] + (len(iy), len(ix)), dtype=src.dtype)
+                for idx in np.ndindex(src.shape[:-2]):
+                    np.take(src[idx].take(iy, axis=0), ix, axis=1, out=new[idx])
+            out[name] = xr.DataArray(new, dims=arr.dims, attrs=arr.attrs)
+            del src, new
+        return out.assign_coords(x=x, y=y)
 
     def load_bands(self,
                    subset=None,
@@ -283,7 +340,7 @@ class Sentinel2Driver():
             else:
                 window = subset[0]
 
-            bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]),
+            bands = stack_bands(self.reader, list(BAND_NAMES_EOREADER[self.band_idx]),
                                   pixel_size=self.resolution,
                                   window=window,
                                   **kwargs)
@@ -292,7 +349,7 @@ class Sentinel2Driver():
             Nwl, Ny, Nx = bands.shape
             bands=bands.isel(x=slice(2, Nx - 2), y=slice(2, Ny - 2))
         else:
-            bands = self.reader.stack(list(BAND_NAMES_EOREADER[self.band_idx]),
+            bands = stack_bands(self.reader, list(BAND_NAMES_EOREADER[self.band_idx]),
                                       pixel_size=self.resolution,
                                       **kwargs)
 
@@ -305,7 +362,7 @@ class Sentinel2Driver():
         # setting up coordinates and dimensions
         # ----------------------------------
         self.prod = bands.assign_coords(wl=('bands', self.INFO.loc['Wavelength (nm)'])). \
-            swap_dims({'bands': 'wl'}).drop({'band', 'bands', 'variable'})
+            swap_dims({'bands': 'wl'}).drop_vars(['band', 'bands', 'variable'], errors='ignore')
         self.prod = self.prod.assign_coords(bandID=('wl', self.INFO.loc['ESA'].values))
         self.prod = self.prod.to_dataset(name='bands', promote_attrs=True)
         self.prod.attrs['wl_to_process'] = WAVELENGTH[self.band_tbp_idx]
@@ -664,7 +721,9 @@ class Sentinel2Driver():
                                                             resolution=self.resolution_angle, mask=mask)
             raa[ibandId] = self.get_band_angle_as_numpy(raw_vazi, bandId=bandId,
                                                         resolution=self.resolution_angle, mask=mask)
+            # EOReader temporaries are kept in reference cycles: free them band by band
             del mask
+            gc.collect()
         # relative azimuth computed in place: raa = (vazi - sazi) % 360
         raa -= new_sun_ang.sazi.values.astype(np.float32)
         raa %= 360

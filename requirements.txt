@@ -1,6 +1,7 @@
 
 importlib_resources
 docopt
+dask
 eoreader>=0.21.1
 xmltodict
 rasterio
