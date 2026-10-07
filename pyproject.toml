@@ -25,6 +25,7 @@ dynamic = ["dependencies"]
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["GRSdriver*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.nc", "*.txt", "*.csv", "*.dat","*.xlsx", "rsr/data/*"]
