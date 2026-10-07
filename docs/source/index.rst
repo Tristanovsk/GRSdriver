@@ -28,16 +28,8 @@ Driver dedicated to load and prepare data for the GRS processor
 .. toctree::
    :maxdepth: 3
    :caption: GRSdriver API
-   :hidden:
 
-   api
-
-API reference
--------------
-
-.. autosummary::
-   :template: custom-module-template.rst
-
+   api/GRSdriver/index
 
 .. toctree::
    :maxdepth: 1

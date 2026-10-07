@@ -8,59 +8,59 @@ These instructions will get you a copy of the project up and running on
 your local machine for development and testing purposes. See deployment
 for notes on how to deploy the project on a live system.
 
-::
+.. code-block:: bash
 
-pip install GRSdriver
+    pip install GRSdriver
 
 
 If you have no GDAL implementation yet, please une anaconda environment and install GDAL before GRSdriver:
 
-::
+.. code-block:: bash
 
-conda install -c conda-forge gdal
+    conda install -c conda-forge gdal
 
 
 Installation from GRSdriver repository (enables use of the notebook and visualization tools)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 1. First clone the repository:
 
-.. code::
+.. code-block:: bash
 
-git clone https://github.com/Tristanovsk/GRSdriver.git
+    git clone https://github.com/Tristanovsk/GRSdriver.git
 
 
 2.a. You may duplicate the conda environment (optional)
 
-.. code::
+.. code-block:: bash
 
-conda env create -f environment.yml
+    conda env create -f environment.yml
 
 
 2.b. If you do not duplicate the environment please install GDAL with conda
 
-.. code::
+.. code-block:: bash
 
-conda install -c conda-forge gdal
+    conda install -c conda-forge gdal
 
 
 3. Install GRSdriver
 
-.. code::
+.. code-block:: bash
 
-conda activate grssuite
+    conda activate grssuite
 
-conda install -c pyviz holoviews panel
+    conda install -c pyviz holoviews panel
 
-pip install .
+    pip install .
 
 
 4. Install and configure JupyterLab and Holoviews
 
-.. code::
+.. code-block:: bash
 
-pip install holoviews datashader cartopy
+    pip install holoviews datashader cartopy
 
-conda install -c conda-forge jupyterlab
+    conda install -c conda-forge jupyterlab
 
 
 

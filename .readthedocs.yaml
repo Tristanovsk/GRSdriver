@@ -1,23 +1,19 @@
 version: 2
 
+# The API is generated statically (sphinx-autoapi) and the notebook outputs come
+# from the committed execution cache (docs/build/.jupyter_cache): the build only
+# needs Sphinx and its extensions, not GRSdriver nor its GDAL/EOReader stack.
+# docs/environment.yml remains for local builds that execute the notebooks.
+
 build:
-  os: ubuntu-22.04
+  os: ubuntu-24.04
   tools:
-    python: "mambaforge-22.9"
+    python: "3.12"
 
 sphinx:
   configuration: docs/source/conf.py
   fail_on_warning: false
 
-formats: all
-
-conda:
-  environment: docs/environment.yml
-
 python:
   install:
-    - requirements: requirements.txt
-    - method: pip
-      path: .
-      extra_requirements:
-        - docs
+    - requirements: docs/requirements.txt
