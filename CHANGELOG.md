@@ -2,6 +2,13 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## v1.1.1 (2026-10-14)
+
+- `grs_driver` command line: Sentinel-2 products are now supported (driver chosen from the product
+  name), default RGB bands per sensor (Sentinel-2: B04, B03, B02; Landsat: RED, GREEN, BLUE), red and
+  blue channels no longer swapped, `.png` added to the output name so that `--no_clobber` works,
+  trailing `/` of the input path handled, southern UTM zones detected.
+
 ## v1.1.0 (2026-10-14)
 
 - Sentinel-2: the bands of a full tile are now loaded one by one, as intended. The grid check of

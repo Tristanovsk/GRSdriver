@@ -154,11 +154,6 @@ recognized by EOReader...). The ``grs_driver`` command line (``docopt``-based, s
 - Invalid command-line arguments are rejected by ``docopt``, which prints the usage and exits
   with a non-zero code.
 
-.. note::
-   The ``grs_driver`` command line currently loads the input with
-   :py:class:`GRSdriver.LandsatDriver` only, so Sentinel-2 products are not supported by the
-   command line yet. Use the Python API for Sentinel-2.
-
 Log Format
 ----------
 
@@ -229,4 +224,5 @@ Data Types
    * - RGB quicklook
      - PNG image from the ``grs_driver`` command line
      - one tile, one date
-     - ``<odir>/<ofile>``; by default ``<ofile>`` is the input basename without ``.SAFE``
+     - ``<odir>/<ofile>``; by default ``<ofile>`` is the input basename without ``.SAFE``,
+       ``.png`` is added when ``<ofile>`` has no extension

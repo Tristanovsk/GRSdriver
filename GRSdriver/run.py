@@ -14,8 +14,9 @@ Options:
 
   -o ofile         Full (absolute or relative) path to output L2 image.
   --odir odir      Ouput directory [default: ./]
-  --rgb_bands RGB  Comma separated list of band numbers to be used in RGB
-                   [default: 3,2,1]
+  --rgb_bands RGB  Comma separated list of the band indices of the red, green and blue
+                   channels (default: 3,2,1 for Sentinel-2, i.e. B04,B03,B02;
+                   4,2,1 for Landsat, i.e. RED,GREEN,BLUE)
   --resolution res  spatial resolution of the scene pixels [default: 60]
   --no_clobber     Do not process <input_file> if <output_file> already exists.
 
@@ -43,17 +44,22 @@ def main():
     file = args['<input_file>']
 
     resolution = int(args['--resolution'])
-    RGB =  [int(x) for x in args['--rgb_bands'].split(',')]
     noclobber = args['--no_clobber']
-    print(RGB)
+
+    # Sentinel-2 L1C (.SAFE) or Landsat 8/9 Collection-2 L1
+    basename = os.path.basename(file.rstrip('/'))
+    is_s2 = basename.startswith('S2') or basename.endswith('.SAFE')
+    rgb_bands = args['--rgb_bands'] or ('3,2,1' if is_s2 else '4,2,1')
+    RGB = [int(x) for x in rgb_bands.split(',')]
     ##################################
     # File naming convention
     ##################################
 
     outfile = args['-o']
     if outfile == None:
-        basename = os.path.basename(file)
-        outfile = basename.replace('.SAFE', '').rstrip('/')
+        outfile = basename.replace('.SAFE', '')
+    if not os.path.splitext(outfile)[1]:
+        outfile += '.png'
 
     odir = args['--odir']
     if odir == './':
@@ -73,25 +79,25 @@ def main():
                  ', resolution:' + str(resolution))
 
     # load product into l1c object
-    l1c = GRSdriver.LandsatDriver(file,
-                                  band_idx=RGB,
-                                  resolution=resolution)
+    driver = GRSdriver.Sentinel2Driver if is_s2 else GRSdriver.LandsatDriver
+    l1c = driver(file,
+                 band_idx=RGB,
+                 resolution=resolution)
     l1c.load_bands()
 
     # get geographic information
     epsg = l1c.extent.crs.to_epsg()
     str_epsg = str(epsg)
     zone = str_epsg[-2:]
-    is_south = str_epsg[2] == 7
-    proj = ccrs.UTM(zone, is_south)
+    is_south = str_epsg[2] == '7'
+    proj = ccrs.UTM(zone, southern_hemisphere=is_south)
 
     # plot RGB image
 
     plt.figure(figsize=(15, 15))
-    p = l1c.prod.bands.isel(wl=[2,1,0]).squeeze().plot.imshow(rgb='wl', robust=True,subplot_kws=dict(projection=proj))
+    # bands are in the order of RGB: red, green, blue
+    p = l1c.prod.bands.squeeze().plot.imshow(rgb='wl', robust=True, subplot_kws=dict(projection=proj))
     p.figure.savefig(outfile)
-   # TODO implement the RGB converter
-
 
     return
 

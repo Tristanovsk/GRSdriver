@@ -39,9 +39,13 @@ arrays computed block by block), Methods page in the documentation
 v1.1.0 (2026-10-14):
 Sentinel-2: bands now really loaded one by one on full tiles (the grid check
 always failed because of spatial_ref), peak memory of load_bands 8.6 GB -> 3.75 GB
+
+v1.1.1 (2026-10-14):
+grs_driver command line: Sentinel-2 supported, default RGB bands per sensor,
+red/blue channels no longer swapped, --no_clobber fixed
 '''
 
-__version__='1.1.0'
+__version__='1.1.1'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver
