@@ -75,6 +75,85 @@ and per detector for the viewing angles, each detector covering only a strip of 
 The angles are computed on the ``resolution_angle`` grid (10, 20 or 60 m), then resampled
 onto the grid of the bands (see `Resampling onto the band grid`_).
 
+MSI focal plane and detectors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The MultiSpectral Instrument (MSI) is a push-broom imager. Its 290 km swath is covered by
+**12 detectors** mounted in a staggered configuration on each focal plane (one for the VNIR
+bands, one for the SWIR bands) [ESA-MSI]_ [Binet2022]_:
+
+- odd and even detectors look in opposite directions along track (forward and backward), so
+  they do not see the ground with the same viewing angles. The **viewing azimuth jumps** at the
+  border between two detectors (about 20° in the tile below, more near nadir);
+- within a detector, the spectral bands are lines shifted along track in the focal plane, and
+  the order of the bands is inverted between odd and even detectors [Binet2022]_. Each band
+  therefore has **its own viewing angles**, and a given ground point is seen by the bands at
+  slightly different times (from about 20 ms up to 2.6 s, between B02 and B09), which causes the
+  "rainbow" effect on moving or elevated objects (planes, clouds) [ESA-MSI]_ [Binet2022]_;
+- the viewing zenith angle stays below about 12° over the swath and varies little from band to
+  band [Harmel2018]_.
+
+The L1C product describes this geometry with the viewing angle grids per band and per
+detector (``Viewing_Incidence_Angles_Grids`` of ``MTD_TL.xml``) and the detector footprint
+masks ``MSK_DETFOO_Bxx`` [ESA-PSD]_, both used by GRSdriver.
+
+The discontinuities matter over water. Sunglint, the reflection of the sun on the sea surface,
+is spread into a cone a few degrees wide whose width increases with the surface roughness, i.e.
+with the wind speed [CoxMunk1954]_. It is therefore a very directional signal: a change of a
+fraction of a degree in the viewing direction can change the glint reflectance a lot. The
+stripes seen over the sea in sunglint since the first MSI image (June 2015), and in Landsat-8/OLI
+images whose 185 km swath is covered by 14 staggered modules, are not instrumental artifacts but
+this directional effect of the target [Fougnie2016]_. This is why GRS needs per-band and
+per-detector viewing angles to model and remove the sunglint [Harmel2018]_.
+
+At the border between an even (:math:`e`) and an odd (:math:`o`) detector, the same sea target is
+seen under two geometries that differ by a few tenths of a degree. The atmospheric and marine
+terms are then nearly the same for both views, and only the glint reflectance :math:`\rho_g`
+changes, so that the difference of TOA reflectance is the difference of glint attenuated by the
+gaseous and atmospheric transmissions :math:`T_g` and :math:`T` [Fougnie2016]_:
+
+.. math::
+
+    \Delta\rho = \rho_{TOA}^{e} - \rho_{TOA}^{o}
+    \simeq T_g\, T \left[\rho_g(\theta_s^e, \theta_v^e, \phi^e) - \rho_g(\theta_s^o, \theta_v^o, \phi^o)\right]
+
+When the glint dominates (red, NIR and SWIR bands), the normalized difference no longer depends
+on the aerosol and marine signals:
+
+.. math::
+
+    \frac{\Delta\rho}{\rho} \simeq 2\,
+    \frac{\rho_g^{e} - \rho_g^{o}}{\rho_g^{e} + \rho_g^{o}}
+
+and, with the Cox and Munk model, depends mainly on the wind speed: the flatter the sea, the
+larger the gap. For the first MSI image, the gap between detectors 10 and 11 goes from about 10 %
+for a wind speed of 2 m/s to 2 % for 10 m/s, and is about twice as large between detectors 11
+and 12, closer to the specular direction. Each detector border in sunglint thus acts as a local
+bidirectional measurement from which the surface wind speed can be estimated
+[Fougnie2016]_. These estimates all rely on the exact viewing angles of each detector and band,
+as provided by GRSdriver.
+
+The figures below show such a gap on a recent image.
+
+.. figure:: _static/s2_rgb.png
+   :width: 70%
+   :alt: RGB image of a Sentinel-2 tile with sunglint
+
+   RGB image (B04, B03, B02) of tile 49QDB (Hainan, China, 2023-07-11) loaded with GRSdriver.
+   Over the sea, the sunglint shows steps of brightness along the detector borders.
+
+.. figure:: _static/s2_sunglint_detectors.png
+   :width: 100%
+   :alt: sunglint discontinuity at a detector border
+
+   Zoom on the sea: the TOA reflectance of B11 (1610 nm), mostly sunglint, jumps from 0.101 to
+   0.127 (median of the 3 pixels on each side) at the border between detectors 10 and 11 (red
+   line, from ``MSK_DETFOO``), where the viewing azimuth changes by about 20°. The normalized gap
+   is 23 % in B11, B8A and B12, and 14 % in B04, where the aerosol and marine signals add to the
+   glint. It is larger than the 2-10 % computed by [Fougnie2016]_ for the same detector border
+   of the first MSI image, which points to a smoother sea or a geometry closer to the specular
+   direction.
+
 Sun angles
 ~~~~~~~~~~
 
@@ -127,6 +206,41 @@ The detector footprint mask (``DETFOO``) of the L1C product gives the detector
 Pixels seen by no detector (outside the swath) are set to NaN. This evaluation is compiled
 with numba and done in float32.
 
+The result, for the 13 bands of tile 49QDB:
+
+.. figure:: _static/s2_view_azimuth_bands.png
+   :width: 100%
+   :alt: viewing azimuth of each Sentinel-2 band
+
+   Viewing azimuth of each band (``(raa + saa) % 360``): one strip per detector, with jumps at
+   the detector borders. The values within each strip differ from band to band.
+
+.. figure:: _static/s2_view_zenith_bands.png
+   :width: 100%
+   :alt: viewing zenith angle of each Sentinel-2 band
+
+   Viewing zenith angle (``vza``) of each band: it increases across track from nadir (left) to
+   the edge of the swath, with small steps at the detector borders.
+
+.. figure:: _static/s2_detector_profile.png
+   :width: 90%
+   :alt: across-track profile of the viewing angles
+
+   Across-track profile of the viewing angles (one row of the tile): sawtooth of the viewing
+   azimuth between odd and even detectors, and spread of the values between bands within a
+   detector. The azimuth varies most near nadir, where a small change in viewing direction
+   gives a large change in azimuth.
+
+.. figure:: _static/s2_azimuth_band_difference.png
+   :width: 100%
+   :alt: detector footprint and difference of angles between two bands
+
+   Detector footprint of B02 (``MSK_DETFOO``) and difference of the viewing angles between B02
+   and B8A: the sign of the azimuth difference alternates between odd and even detectors, as
+   the order of the bands is inverted in the focal plane.
+
+The figures are made with ``docs/figures/make_geometry_figures.py``.
+
 Relative azimuth
 ~~~~~~~~~~~~~~~~
 
@@ -149,6 +263,9 @@ The angles are read from the angle GeoTIFFs of the product (``*_SZA.TIF``, ``*_S
 
     \alpha(x, y) = 0.01\, I(x, y)
 
+The OLI swath is also covered by staggered detector modules (14) that view slightly forward or
+backward, with sunglint stripes at their borders [Fougnie2016]_, but the angle files of the
+Collection-2 products give one geometry per pixel for all the bands.
 They are not band specific: ``sza``, ``vza`` and ``raa`` are (y, x) arrays, with the
 relative azimuth
 
@@ -225,3 +342,34 @@ Two options reduce the memory used by the Sentinel-2 driver:
 
 Measured peak memory for a full tile (13 bands, 20 m): 7.0 GB with the full-resolution
 angles, 3.7 GB with ``lazy_geom=True``.
+
+
+References
+----------
+
+.. [Harmel2018] Harmel, T., Chami, M., Tormos, T., Reynaud, N., Danis, P.-A. (2018). Sunglint
+   correction of the Multi-Spectral Instrument (MSI)-SENTINEL-2 imagery over inland and sea
+   waters from SWIR bands. *Remote Sensing of Environment*, 204, 308-321.
+   https://doi.org/10.1016/j.rse.2017.10.022
+
+.. [Binet2022] Binet, R., Bergsma, E., Poulain, V. (2022). Accurate Sentinel-2 inter-band time
+   delays. *ISPRS Annals of the Photogrammetry, Remote Sensing and Spatial Information
+   Sciences*, V-1-2022, 57-66. https://doi.org/10.5194/isprs-annals-V-1-2022-57-2022
+
+.. [Fougnie2016] Fougnie, B., Hagolle, O., Lachérade, S. (2016). Surface wind speed estimation over
+   open ocean using bidirectional observation by Sentinel-2/MSI and Landsat-8/OLI. *Proc. SPIE*
+   9972, Earth Observing Systems XXI, 997211. https://doi.org/10.1117/12.2237597
+
+.. [CoxMunk1954] Cox, C., Munk, W. (1954). Measurement of the roughness of the sea surface from
+   photographs of the sun's glitter. *Journal of the Optical Society of America*, 44(11),
+   838-850. https://doi.org/10.1364/JOSA.44.000838
+
+.. [ESA-PSD] ESA / CS Group (2026). *Sentinel-2 Products Specification Document*,
+   S2-PDGS-CS-DI-PSD, issue 15.2: ``Tile_Angles`` (``Sun_Angles_Grid``,
+   ``Viewing_Incidence_Angles_Grids``) of the granule metadata and ``MSK_DETFOO`` masks.
+
+.. [ESA-MSI] ESA, Sentinel-2 MSI technical guide: `MSI instrument
+   <https://sentinel.esa.int/web/sentinel/technical-guides/sentinel-2-msi/msi-instrument>`_ and
+   `anomalies and product features
+   <https://sentinel.esa.int/web/sentinel/technical-guides/sentinel-2-msi/anomalies-and-product-features>`_
+   (parallax between odd and even detectors, "rainbow" effect, sunglint discontinuities).

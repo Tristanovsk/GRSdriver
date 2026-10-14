@@ -38,6 +38,7 @@ Driver dedicated to load and prepare data for the GRS processor
    :caption: For Contributors
    :hidden:
 
+   contributing
    history
 
 Interactive data manipulation
