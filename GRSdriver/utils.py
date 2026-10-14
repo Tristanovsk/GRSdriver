@@ -45,7 +45,10 @@ def stack_bands(reader, bands, **kwargs):
                                  dims=('bands',) + band_xda.dims,
                                  coords=band_xda.coords,
                                  attrs=band_xds.attrs)
-        elif not (band_xda.x.equals(stack.x) and band_xda.y.equals(stack.y)):
+        # compare the coordinate values only: the spatial_ref coordinate differs between
+        # resampled and coarsened bands (EPSG code vs 0) although the grid is the same
+        elif not (np.array_equal(band_xda.x.values, stack.x.values) and
+                  np.array_equal(band_xda.y.values, stack.y.values)):
             # bands on different grids (e.g. with a window): let EOReader align them
             del stack, band_xds, band_xda
             gc.collect()
