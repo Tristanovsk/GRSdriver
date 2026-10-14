@@ -37,6 +37,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.duration',
     'sphinx_copybutton',
+    'sphinxcontrib.mermaid',
     'myst_nb',
     'IPython.sphinxext.ipython_console_highlighting',
 ]

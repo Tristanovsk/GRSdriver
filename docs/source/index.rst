@@ -16,6 +16,7 @@ Driver dedicated to load and prepare data for the GRS processor
 
    usage
    methods
+   processing_chain
 
 .. toctree::
    :maxdepth: 2
