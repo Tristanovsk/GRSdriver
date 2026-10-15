@@ -22,10 +22,7 @@ Driver dedicated to load and prepare data for the GRS processor
    :maxdepth: 2
    :caption: Tutorials
 
-   examples/basics
-   examples/landsat
-   examples/auxiliary
-   examples/download
+   tutorials/index
 
 .. toctree::
    :maxdepth: 3
