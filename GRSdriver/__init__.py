@@ -43,9 +43,16 @@ always failed because of spatial_ref), peak memory of load_bands 8.6 GB -> 3.75 
 v1.1.1 (2026-10-14):
 grs_driver command line: Sentinel-2 supported, default RGB bands per sensor,
 red/blue channels no longer swapped, --no_clobber fixed
+
+v2.0.0 (2026-10-15):
+EOReader, sertit, the GDAL Python bindings, fiona and pystac no longer needed
+(pip-only install): bands read with rasterio/GDAL on the output grid and calibrated
+from the product metadata, ~2x faster for Sentinel-2; Sentinel-2 baseline < 4.0
+angles fixed; least-squares plane fit of the viewing angles (scipy.odr deprecated);
+API: no **kwargs, no .reader, GRSDRIVER_USE_DASK
 '''
 
-__version__='1.1.1'
+__version__='2.0.0'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver

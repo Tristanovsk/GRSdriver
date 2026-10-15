@@ -2,7 +2,13 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
-## Unreleased
+## v2.0.0 (2026-10-15)
+
+Breaking changes: `LandsatDriver`, `Sentinel2Driver` and their `load_product` no longer accept
+`**kwargs` (they were passed to EOReader), the `reader` attribute is removed, a `subset` given as
+a sequence is the bounding box `(minx, miny, maxx, maxy)` in the product CRS, and some product
+attributes changed (see below). Pixel values change at swath edges, with a `subset`, and at
+detector boundaries for the angles (details below).
 
 EOReader is no longer a dependency (nor `sertit` and their dependencies), and the GDAL Python
 bindings (`osgeo`) are no longer used.
