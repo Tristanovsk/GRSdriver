@@ -2,7 +2,7 @@ version: 2
 
 # The API is generated statically (sphinx-autoapi) and the notebook outputs come
 # from the committed execution cache (docs/build/.jupyter_cache): the build only
-# needs Sphinx and its extensions, not GRSdriver nor its GDAL/EOReader stack.
+# needs Sphinx and its extensions, not GRSdriver nor its dependencies.
 # docs/environment.yml remains for local builds that execute the notebooks.
 
 build:

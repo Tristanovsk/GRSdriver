@@ -49,7 +49,7 @@ EOReader, sertit, the GDAL Python bindings, fiona and pystac no longer needed
 (pip-only install): bands read with rasterio/GDAL on the output grid and calibrated
 from the product metadata, ~2x faster for Sentinel-2; Sentinel-2 baseline < 4.0
 angles fixed; least-squares plane fit of the viewing angles (scipy.odr deprecated);
-API: no **kwargs, no .reader, GRSDRIVER_USE_DASK
+API: no ``**kwargs``, no ``.reader``, ``GRSDRIVER_USE_DASK``
 '''
 
 __version__='2.0.0'
