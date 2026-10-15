@@ -128,6 +128,10 @@ class LandsatDriver():
         first element is the bounding box ``(minx, miny, maxx, maxy)`` in the
         product CRS
     :param resolution: pixel size (m) of the output bands
+    :param n_workers: number of threads reading the bands in parallel (the decoding and
+        resampling release the GIL). Each extra worker holds one more band in memory
+        while it is read; ``n_workers=1`` minimizes the memory. Not used in dask mode,
+        where dask schedules the reading.
     :param verbose: verbosity flag
 
     :ivar prod: the product (``xarray.Dataset``), filled by :meth:`load_product` or :meth:`load_bands`
@@ -153,6 +157,7 @@ class LandsatDriver():
                  band_tbp_idx=[0, 1, 2, 3, 4, 5, 7, 8],
                  subset=None,
                  resolution=30,
+                 n_workers=4,
                  verbose=False):
 
         self.abspath = os.path.abspath(image_path)
@@ -162,6 +167,7 @@ class LandsatDriver():
         self.band_tbp_idx = band_tbp_idx
         self.subset = subset
         self.resolution = resolution
+        self.n_workers = n_workers
         self.INFO = INFO[band_idx]
 
         # -----------------------------------------------------
@@ -382,7 +388,8 @@ class LandsatDriver():
         chunks = DASK_CHUNKS if use_dask() else None
         qa = self._read_qa(grid, chunks=chunks)
         bands = stack_bands(lambda n: self._read_band(n, grid, qa=qa, chunks=chunks),
-                            self.INFO.loc['Landsat band'].values, lazy=bool(chunks))
+                            self.INFO.loc['Landsat band'].values, lazy=bool(chunks),
+                            n_workers=self.n_workers)
         del qa
         bands.rio.write_nodata(np.nan, encoded=True, inplace=True)
 

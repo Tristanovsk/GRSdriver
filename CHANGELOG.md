@@ -4,6 +4,14 @@ All notable changes to GRSdriver are listed here, most recent first.
 
 ## Unreleased
 
+- Performance: the bands are read by `n_workers` threads in parallel (new parameter of both
+  drivers, default 4; `n_workers=1` for the previous memory use), and the viewing angles of the
+  Sentinel-2 bands are computed in parallel (`lin2D` compiled with `nogil`). Full Sentinel-2 tile
+  at 20 m: ~30 s instead of ~65 s, peak memory 8.5 GB instead of 6.6 GB. Identical results.
+- Dask mode (`GRSDRIVER_USE_DASK=1`): really lazy (the Sentinel-2 detector masks were read
+  eagerly), and each band is read by one dask task with the fast in-memory reader instead of a
+  GDAL warped VRT (JPEG2000 tiles decoded several times): full tile at 20 m in ~20 s instead of
+  ~145 s. `utils.read_on_grid` no longer uses a warped VRT.
 - `SpatioTemp.wktbox`: the box is now `width` x `height` m as documented; it was twice as large
   in each direction (the corners were placed at the full diagonal from the center). Code relying
   on the old size (e.g. grstbx `subset.py`) gets regions 2 x smaller in each direction.

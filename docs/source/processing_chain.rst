@@ -134,9 +134,12 @@ Output product format
      - wl
      - Central wavelength computed from the SRF (nm).
 
-The arrays are numpy arrays by default. They are dask arrays (lazy) when
-``GRSDRIVER_USE_DASK=1`` (former name ``EOREADER_USE_DASK``) is set before importing GRSdriver. With ``lazy_geom=True``
-(Sentinel-2), only ``vza`` and ``raa`` are lazy. The product can be saved by the user with the
+The arrays are numpy arrays by default, the bands being read by ``n_workers`` threads (4 by
+default). They are dask arrays (lazy) when ``GRSDRIVER_USE_DASK=1`` (former name
+``EOREADER_USE_DASK``) is set before importing GRSdriver: each band is then read by one dask task
+when it is computed, with the threads of the dask scheduler (all the cores by default; limit them
+with ``dask.config.set(num_workers=...)``). With ``lazy_geom=True`` (Sentinel-2), only ``vza``
+and ``raa`` are lazy. The product can be saved by the user with the
 xarray writers (``prod.to_netcdf``, ``prod.to_zarr``).
 
 Return Codes
@@ -164,7 +167,7 @@ Required Resources
 -------------------
 
 Measured for one full Sentinel-2 tile (T22JEM, 13 bands, ``resolution=20``,
-``resolution_angle=60``, numpy mode, GRSdriver 2.0.0) on a shared 40-core node.
+``resolution_angle=60``, numpy mode, ``n_workers=4``, development version after GRSdriver 2.0.0) on a shared 40-core node.
 The resources scale with the number of pixels: about 4 x more at 10 m, about 9 x less at 60 m.
 
 .. list-table::
@@ -175,16 +178,19 @@ The resources scale with the number of pixels: about 4 x more at 10 m, about 9 x
      - Quantity
      - Source / notes
    * - CPU
-     - multi-threaded: ~5.5 min of CPU time for ~1 min of wall time
-     - JP2 decoding by GDAL uses several threads. ``load_bands`` takes ~80 % of the time
-       (JP2 decoding, resampling, conversion into reflectance).
+     - multi-threaded: ``n_workers`` bands read in parallel, each JP2 decoding using several
+       GDAL threads
+     - ``load_bands`` takes ~70 % of the time (JP2 decoding, resampling, conversion into
+       reflectance). The viewing angles of the bands are also computed by ``n_workers`` threads.
    * - RAM
-     - peak ~6.6 GB; ~4.8 GB with ``lazy_geom=True``
-     - final ``prod``: 4.8 GB (``bands``, ``vza``, ``raa``: 1.57 GB each). At 10 m,
-       ``vza`` + ``raa`` take 12.5 GB: use ``lazy_geom=True`` (see :doc:`methods`).
+     - peak ~8.5 GB (~6.6 GB with ``n_workers=1``); about 2 GB less with ``lazy_geom=True``
+     - final ``prod``: 4.8 GB (``bands``, ``vza``, ``raa``: 1.57 GB each). Each extra worker
+       holds one band being read. At 10 m, ``vza`` + ``raa`` take 12.5 GB: use
+       ``lazy_geom=True`` (see :doc:`methods`).
    * - Execution time
-     - ~1 min per full tile at 20 m
-     - ``__init__`` < 1 s, ``load_bands`` 50 s, geometry 10 s.
+     - ~30 s per full tile at 20 m (~65 s with ``n_workers=1``)
+     - ``__init__`` < 1 s, ``load_bands`` 20 s, geometry 8 s. In dask mode, the bands of a full
+       tile are computed in ~15 s with all the cores (peak ~11 GB).
    * - Disk — input
      - one L1 product: ~0.4–0.8 GB (Sentinel-2 SAFE), ~1 GB (Landsat L1)
      - read only

@@ -84,3 +84,13 @@ def test_coarser_resolution():
     qa, _ = _raw('QA_PIXEL')
     assert np.isin(np.unique(l1.prod.flags_l1.values), np.unique(qa)).all()
     assert np.isfinite(l1.prod.bands).any()
+
+
+def test_n_workers_identical():
+    '''Bands read in parallel threads identical to the sequential reading.'''
+    prods = []
+    for n_workers in (1, 4):
+        l1 = LandsatDriver(IMAGE, band_idx=[1, 4, 9], subset=SUBSET, resolution=30, n_workers=n_workers)
+        l1.load_product()
+        prods.append(l1.prod)
+    np.testing.assert_array_equal(prods[0].bands.values, prods[1].bands.values)

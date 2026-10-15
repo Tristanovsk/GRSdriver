@@ -11,8 +11,11 @@ Tools shared by the drivers, and spatial helpers for the users.
 
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
+import dask
+import dask.array as da
 import pandas as pd
 import xarray as xr
 import rioxarray  # noqa: F401 (rio accessor)
@@ -23,7 +26,6 @@ from rasterio import features
 from rasterio.enums import Resampling
 import rasterio.warp
 import rasterio.windows
-from rasterio.vrt import WarpedVRT
 from affine import Affine
 import geopandas as gpd
 
@@ -47,6 +49,32 @@ def use_dask():
     return value.lower() in ('1', 'true')
 
 
+def _read_window(path, transform, width, height, resampling, nodata, dtype):
+    '''
+    Read the first band of ``path`` on a target grid, as a numpy array (see :func:`read_on_grid`).
+    '''
+    with rasterio.open(path) as src:
+        # source window covering the target grid (north up), with a margin for the
+        # resampling kernel
+        minx, maxx = transform.c, transform.c + transform.a * width
+        maxy, miny = transform.f, transform.f + transform.e * height
+        col0, col1 = [(x - src.transform.c) / src.transform.a for x in (minx, maxx)]
+        row0, row1 = [(y - src.transform.f) / src.transform.e for y in (maxy, miny)]
+        col0, row0 = max(0, math.floor(col0) - 2), max(0, math.floor(row0) - 2)
+        col1, row1 = min(src.width, math.ceil(col1) + 2), min(src.height, math.ceil(row1) + 2)
+        window = rasterio.windows.Window(col0, row0, col1 - col0, row1 - row0)
+        src_nodata = src.nodata if nodata is None else nodata
+        data = np.full((height, width), 0 if src_nodata is None else src_nodata,
+                       dtype=dtype or src.dtypes[0])
+        if window.width > 0 and window.height > 0:
+            rasterio.warp.reproject(src.read(1, window=window), data,
+                                    src_transform=src.window_transform(window), src_crs=src.crs,
+                                    dst_transform=transform, dst_crs=src.crs,
+                                    src_nodata=src_nodata, dst_nodata=src_nodata,
+                                    resampling=resampling)
+    return data
+
+
 def read_on_grid(path, transform, width, height,
                  resampling=Resampling.nearest,
                  nodata=None,
@@ -54,11 +82,12 @@ def read_on_grid(path, transform, width, height,
                  chunks=None):
     '''
     Read the first band of a raster on a target grid (same CRS): only the pixels
-    needed for the target grid are read, and the resampling (if any) is done by GDAL.
+    needed for the target grid are read and decoded once, then resampled (if needed)
+    by GDAL (``rasterio.warp.reproject``).
 
-    In memory (``chunks=None``), the source window is decoded at once and
-    resampled with ``rasterio.warp.reproject`` (a warped VRT decodes compressed
-    tiles, e.g. JPEG2000, several times); lazily, through a GDAL warped VRT.
+    With ``chunks``, the raster is read lazily: a dask array computed by a single task
+    (the whole raster is decoded at once, much faster than block by block for
+    compressed formats such as JPEG2000), then rechunked to ``chunks``.
 
     :param path: path of the raster file
     :param transform: affine transform of the target grid
@@ -69,68 +98,55 @@ def read_on_grid(path, transform, width, height,
         and fill value outside the source); by default the one of the file
     :param dtype: data type in which the resampling is computed (e.g. ``float32``
         to avoid rounding averaged integers); by default the one of the file
-    :param chunks: dask chunks (lazy reading), ``None`` to load into memory
+    :param chunks: dask chunks (lazy reading, e.g. :data:`DASK_CHUNKS`), ``None`` to load
+        into memory
     :return: DataArray (y, x), with the ``rio`` georeferencing
     '''
     with rasterio.open(path) as src:
-        if chunks is None:
-            # source window covering the target grid (north up), with a margin for the
-            # resampling kernel
-            minx, maxx = transform.c, transform.c + transform.a * width
-            maxy, miny = transform.f, transform.f + transform.e * height
-            col0, col1 = [(x - src.transform.c) / src.transform.a for x in (minx, maxx)]
-            row0, row1 = [(y - src.transform.f) / src.transform.e for y in (maxy, miny)]
-            col0, row0 = max(0, math.floor(col0) - 2), max(0, math.floor(row0) - 2)
-            col1, row1 = min(src.width, math.ceil(col1) + 2), min(src.height, math.ceil(row1) + 2)
-            window = rasterio.windows.Window(col0, row0, col1 - col0, row1 - row0)
-            src_nodata = src.nodata if nodata is None else nodata
-            data = np.full((height, width), 0 if src_nodata is None else src_nodata,
-                           dtype=dtype or src.dtypes[0])
-            if window.width > 0 and window.height > 0:
-                rasterio.warp.reproject(src.read(1, window=window), data,
-                                        src_transform=src.window_transform(window), src_crs=src.crs,
-                                        dst_transform=transform, dst_crs=src.crs,
-                                        src_nodata=src_nodata, dst_nodata=src_nodata,
-                                        resampling=resampling)
-            # pixel centers
-            x = transform.c + transform.a * (np.arange(width) + 0.5)
-            y = transform.f + transform.e * (np.arange(height) + 0.5)
-            xda = xr.DataArray(data, dims=('y', 'x'), coords=dict(x=x, y=y))
-            return xda.rio.write_crs(src.crs).rio.write_transform(transform)
-        vrt_kwargs = dict(crs=src.crs, transform=transform, width=width, height=height,
-                          resampling=resampling)
-        if nodata is not None:
-            vrt_kwargs.update(src_nodata=nodata, nodata=nodata)
-        if dtype is not None:
-            vrt_kwargs.update(dtype=dtype)
-        with WarpedVRT(src, **vrt_kwargs) as vrt:
-            xda = rioxarray.open_rasterio(vrt, chunks=chunks)
-            if chunks is None:
-                xda = xda.load()
-    return xda.squeeze('band', drop=True)
+        crs, out_dtype = src.crs, np.dtype(dtype or src.dtypes[0])
+    args = (path, transform, width, height, resampling, nodata, dtype)
+    if chunks is None:
+        data = _read_window(*args)
+    else:
+        data = da.from_delayed(dask.delayed(_read_window)(*args), shape=(height, width), dtype=out_dtype)
+    # pixel centers
+    x = transform.c + transform.a * (np.arange(width) + 0.5)
+    y = transform.f + transform.e * (np.arange(height) + 0.5)
+    xda = xr.DataArray(data, dims=('y', 'x'), coords=dict(x=x, y=y))
+    if chunks is not None:
+        xda = xda.chunk(chunks)
+    return xda.rio.write_crs(crs).rio.write_transform(transform)
 
 
-def stack_bands(read_band, keys, lazy=False):
+def stack_bands(read_band, keys, lazy=False, n_workers=1):
     '''
     Stack the bands returned by ``read_band(key)`` for each key of ``keys``
-    along a new ``bands`` dimension. Eager mode: the bands are loaded one by one
-    into a preallocated float32 array (peak memory: the stack plus one band).
+    along a new ``bands`` dimension.
+
+    Eager mode: the bands are read by ``n_workers`` threads (decoding and resampling
+    release the GIL) and copied into a preallocated float32 array as soon as they are
+    read; the peak memory is the stack plus about ``n_workers`` bands being read.
 
     :param read_band: function returning a DataArray (y, x) for a key
     :param keys: band keys (e.g. band numbers)
     :param lazy: concatenate the (dask-backed) bands without computing them
+    :param n_workers: number of bands read in parallel (eager mode)
     :return: DataArray (bands, y, x)
     '''
+    keys = list(keys)
     if lazy:
         return xr.concat([read_band(key) for key in keys], dim='bands')
-    stack = None
-    for iband, key in enumerate(keys):
-        band = read_band(key)
-        if stack is None:
-            stack = xr.DataArray(np.empty((len(keys),) + band.shape, dtype=np.float32),
-                                 dims=('bands',) + band.dims, coords=band.coords)
-        stack.values[iband] = band.values
-        del band
+    # the first band gives the grid of the stack
+    band = read_band(keys[0])
+    stack = xr.DataArray(np.empty((len(keys),) + band.shape, dtype=np.float32),
+                         dims=('bands',) + band.dims, coords=band.coords)
+    stack.values[0] = band.values
+    del band
+    with ThreadPoolExecutor(max_workers=max(1, n_workers)) as executor:
+        futures = {executor.submit(read_band, key): iband for iband, key in enumerate(keys[1:], start=1)}
+        for future in as_completed(futures):
+            stack.values[futures.pop(future)] = future.result().values
+            del future
     return stack
 
 

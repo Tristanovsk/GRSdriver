@@ -19,6 +19,7 @@ Example::
 import datetime
 import glob
 import os
+from concurrent.futures import ThreadPoolExecutor
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -226,6 +227,11 @@ class Sentinel2Driver():
         the bands are dask-backed
     :param geom_chunks: size (pixels) of the ``y`` and ``x`` chunks of the lazy
         geometry when the bands are not dask-backed
+    :param n_workers: number of threads reading the bands and computing the viewing
+        angles of the bands in parallel (the decoding, resampling and plane evaluation
+        release the GIL). Each extra worker holds one more band in memory while it is
+        read; ``n_workers=1`` minimizes the memory. Not used for the bands in dask mode,
+        where dask schedules the reading.
     :param verbose: print progress and fitting reports
 
     :ivar prod: the product (``xarray.Dataset``), filled by :meth:`load_product` or :meth:`load_bands`
@@ -251,6 +257,7 @@ class Sentinel2Driver():
                  resolution_angle=60,
                  lazy_geom=False,
                  geom_chunks=1024,
+                 n_workers=4,
                  verbose=False):
 
         self.abspath = abspath = os.path.abspath(imageSAFE)
@@ -263,6 +270,7 @@ class Sentinel2Driver():
         self.resolution = resolution
         self.lazy_geom = lazy_geom
         self.geom_chunks = geom_chunks
+        self.n_workers = n_workers
         self.INFO = INFO[band_idx]
 
         # -----------------------------------------------------
@@ -496,7 +504,8 @@ class Sentinel2Driver():
         # resampling computed in float32 (no rounding of averaged DN), DN = 0 ignored
         dn = read_on_grid(self._get_file('IMG_DATA/*_B' + BAND_ID[bandId] + '.jp2'), *grid,
                           resampling=resampling, nodata=0, dtype='float32', chunks=chunks)
-        valid = (dn != 0) & (self._read_footprint(bandId, grid, chunks=chunks).values != 0)
+        # .data: same grid, no alignment needed; stays lazy in dask mode
+        valid = (dn != 0) & (self._read_footprint(bandId, grid, chunks=chunks).data != 0)
         band = (dn + np.float32(self.radio_offset[bandId])) / np.float32(self.quantification_value)
         return band.clip(min=0).where(valid).astype(np.float32)
 
@@ -538,7 +547,7 @@ class Sentinel2Driver():
         grid = self._get_grid(subset)
         chunks = DASK_CHUNKS if use_dask() else None
         bands = stack_bands(lambda bandId: self._read_band(bandId, grid, chunks=chunks),
-                            self.band_idx, lazy=bool(chunks))
+                            self.band_idx, lazy=bool(chunks), n_workers=self.n_workers)
         bands.rio.write_nodata(np.nan, encoded=True, inplace=True)
 
         # ----------------------------------
@@ -683,7 +692,8 @@ class Sentinel2Driver():
         return beta[0] * x[0] + beta[1] * x[1] + beta[2]
 
     @staticmethod
-    @jit(nopython=True, cache=True)  # "uint16[:,:](float64[:],float64[:],float64[:,:],float64[:,:],intp,intp)",
+    # nogil: the bands are processed in parallel threads (see get_all_band_angles)
+    @jit(nopython=True, cache=True, nogil=True)
     def lin2D(arr, x, y, mask, betas, detector_offset=0, scale_factor=100):
         '''
         Fill ``arr`` (in place, numba compiled) with the plane of the detector
@@ -881,7 +891,10 @@ class Sentinel2Driver():
 
         new_vza = np.empty((len(band_idx), self.width, self.height), dtype=np.float32)
         raa = np.empty((len(band_idx), self.width, self.height), dtype=np.float32)
-        for ibandId, bandId in enumerate(band_idx):
+        sazi = new_sun_ang.sazi.values.astype(np.float32)
+
+        def band_angles(item):
+            ibandId, bandId = item
             if self.verbose:
                 print('Band number ' + str(bandId) + ' is being loaded')
             # the detector mask is read once and shared by zenith and azimuth
@@ -890,10 +903,13 @@ class Sentinel2Driver():
                                                             resolution=self.resolution_angle, mask=mask)
             raa[ibandId] = self.get_band_angle_as_numpy(raw_vazi, bandId=bandId,
                                                         resolution=self.resolution_angle, mask=mask)
-            del mask
-        # relative azimuth computed in place: raa = (vazi - sazi) % 360
-        raa -= new_sun_ang.sazi.values.astype(np.float32)
-        raa %= 360
+            # relative azimuth computed in place: raa = (vazi - sazi) % 360
+            raa[ibandId] -= sazi
+            raa[ibandId] %= 360
+
+        # bands processed in parallel threads (mask decoding, numpy and lin2D release the GIL)
+        with ThreadPoolExecutor(max_workers=max(1, self.n_workers)) as executor:
+            list(executor.map(band_angles, enumerate(band_idx)))
 
         self.geom['vza'] = xr.DataArray(new_vza, dims=['wl', 'y', 'x'])
         self.geom['raa'] = xr.DataArray(raa, dims=['wl', 'y', 'x'])

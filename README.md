@@ -61,9 +61,10 @@ l1 = LandsatDriver('LC09_L1TP_..._02_T1', resolution=30)
 l1.load_product()
 ```
 
-For a full Sentinel-2 tile at 10 m, `Sentinel2Driver(..., lazy_geom=True)` keeps the per-band
-viewing angles lazy and saves several GB of memory. Set `GRSDRIVER_USE_DASK=1` before importing
-GRSdriver to get a fully lazy (dask-backed) product.
+The bands are read by 4 threads in parallel: set `n_workers` (e.g. `n_workers=1`) to trade speed
+for memory. For a full Sentinel-2 tile at 10 m, `Sentinel2Driver(..., lazy_geom=True)` keeps the
+per-band viewing angles lazy and saves several GB of memory. Set `GRSDRIVER_USE_DASK=1` before
+importing GRSdriver to get a fully lazy (dask-backed) product.
 
 ### Command line
 

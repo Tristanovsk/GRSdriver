@@ -117,3 +117,15 @@ def test_flat_metadata(key):
     gdal = pytest.importorskip('osgeo.gdal')
     gdal.UseExceptions()
     assert md == gdal.Open(xml_file).GetMetadata()
+
+
+def test_n_workers_identical():
+    '''Bands and angles read in parallel threads identical to the sequential reading.'''
+    image, subset = _product('pb4')
+    prods = []
+    for n_workers in (1, 4):
+        l1c = Sentinel2Driver(image, band_idx=[0, 1, 8, 11], subset=subset, resolution=60, n_workers=n_workers)
+        l1c.load_product()
+        prods.append(l1c.prod)
+    for var in ('bands', 'vza', 'raa', 'sza'):
+        np.testing.assert_array_equal(prods[0][var].values, prods[1][var].values)
