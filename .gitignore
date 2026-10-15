@@ -11,7 +11,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 env/
-#build/
+/build/
 develop-eggs/
 dist/
 downloads/
@@ -149,3 +149,7 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
+
+# documentation build (only the execution cache of the tutorials is tracked)
+docs/build/*
+!docs/build/.jupyter_cache/
