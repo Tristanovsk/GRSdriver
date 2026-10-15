@@ -1,3 +1,22 @@
+'''
+Interactive dashboard to explore the bands of a product in JupyterLab (optional).
+
+:class:`ViewSpectral` displays each band and date of a product over a basemap, with widgets
+to choose the band, the date, the colormap, the range and the opacity, and a tool to draw an
+area of interest. It needs a running Jupyter kernel and the optional packages ``holoviews``,
+``panel``, ``datashader``, ``bokeh`` and ``colorcet``, which are not installed with GRSdriver::
+
+    pip install holoviews panel datashader bokeh colorcet
+
+Example::
+
+    from GRSdriver import visual
+
+    view = visual.ViewSpectral(l1c.prod.bands, reproject=True)
+    view.visu()                                       # dashboard in the notebook
+    aoi = view.get_geom(view.aoi_stream, crs=l1c.crs) # last polygon drawn
+'''
+
 import glob
 import os
 import numpy as np
@@ -31,9 +50,19 @@ from collections import OrderedDict as odict
 
 
 class Utils():
+    '''
+    Helpers of the dashboard.
+    '''
 
     @staticmethod
     def get_geom(aoi_stream, crs=4326):
+        '''
+        Last polygon drawn on the dashboard, as a GeoDataFrame.
+
+        :param aoi_stream: ``holoviews.streams.PolyDraw`` stream of the polygons (``ViewSpectral.aoi_stream``)
+        :param crs: CRS of the output (e.g. that of the product)
+        :return: ``geopandas.GeoDataFrame`` with one polygon
+        '''
         geom = aoi_stream.data
         ys, xs = geom['ys'][-1], geom['xs'][-1]
         polygon_geom = Polygon(zip(xs, ys))
@@ -42,6 +71,11 @@ class Utils():
 
     @staticmethod
     def custom_hover():
+        '''
+        Hover tool displaying the longitude, latitude and value of the pixel under the cursor.
+
+        :return: ``bokeh.models.HoverTool``
+        '''
         formatter_code = """
           var digits = 4;
           var projections = Bokeh.require("core/util/projections");
@@ -59,6 +93,20 @@ class Utils():
 
 
 class ViewSpectral(Utils):
+    '''
+    Interactive viewer of the bands of a product (see the module description).
+
+    :param raster: DataArray (wl, y, x) or (time, wl, y, x), e.g. ``prod.bands`` or a datacube
+    :param dates: dates to display (default: all the dates of ``raster``)
+    :param bands: wavelengths to display (default: all the bands of ``raster``)
+    :param reproject: reproject the bands in Web Mercator (EPSG:3857), to overlay them on the
+        basemaps
+    :param minmaxvalues: initial range of the color scale
+    :param minmax: limits of the range slider
+
+    :ivar aoi_stream: polygons drawn on the dashboard (see :meth:`~GRSdriver.visual.Utils.get_geom`)
+    '''
+
     def __init__(self, raster, dates=None,
                  bands=None,
                  reproject=False,
@@ -112,6 +160,11 @@ class ViewSpectral(Utils):
         self.edit_stream = hv.streams.PolyEdit(source=self.aoi_polygons, vertex_style={'color': 'red'})
 
     def visu(self):
+        '''
+        Build the dashboard.
+
+        :return: ``panel.Column`` (displayed when it is the last expression of a notebook cell)
+        '''
         dates = self.dates
         bands = self.bands
         hv.opts.defaults(

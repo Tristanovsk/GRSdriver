@@ -2,6 +2,18 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## Unreleased
+
+- `SpatioTemp.wktbox`: the box is now `width` x `height` m as documented; it was twice as large
+  in each direction (the corners were placed at the full diagonal from the center). Code relying
+  on the old size (e.g. grstbx `subset.py`) gets regions 2 x smaller in each direction.
+- `SpatioTemp.clip_raster`: the clipped square has sides of `extent_m` as documented (it was
+  1.41 x larger).
+- API documentation: package overview, documented module constants (band tables), main
+  attributes of the drivers in the class docstrings, optional `visual` dashboard documented;
+  undocumented internal attributes no longer listed. The release history in `__init__.py` is now
+  a comment block.
+
 ## v2.0.0 (2026-10-15)
 
 Breaking changes: `LandsatDriver`, `Sentinel2Driver` and their `load_product` no longer accept

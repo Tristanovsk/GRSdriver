@@ -1,10 +1,19 @@
 '''
 Driver for Sentinel-2 MSI Level-1C products (SAFE format).
 
-Reads the bands (JPEG2000) and converts them into top-of-atmosphere reflectance
-with the quantification value and radiometric offsets of the product metadata,
-and computes the per-band sun and viewing geometry from the granule metadata
-(see :class:`Sentinel2Driver`).
+:class:`Sentinel2Driver` reads the bands (JPEG2000) on a common grid, converts them into
+top-of-atmosphere reflectance with the quantification value and radiometric offsets of the
+product metadata, and computes the sun and per-band viewing geometry from the granule metadata
+(see the :doc:`Methods </methods>` page). :data:`INFO` lists the 13 bands of the MSI and
+:func:`flat_metadata` reads the main metadata of a product.
+
+Example::
+
+    from GRSdriver import Sentinel2Driver
+
+    l1c = Sentinel2Driver('S2B_MSIL1C_..._.SAFE', band_idx=[1, 2, 3, 8], resolution=20)
+    l1c.load_product()
+    l1c.prod.bands.sel(wl=865)
 '''
 
 import datetime
@@ -32,14 +41,24 @@ from .utils import use_dask, DASK_CHUNKS, read_on_grid, stack_bands, get_bounds,
 
 opj = os.path.join
 BAND_NAMES = np.array(['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'])
+'''ESA names of the 13 bands, in the order of the band indices (``band_idx``) 0 to 12.'''
+
 BAND_LONG_NAMES = np.array(['CA', 'BLUE', 'GREEN', 'RED', 'VRE_1',
                             'VRE_2', 'VRE_3', 'NIR', 'NARROW_NIR',
                             'WV', 'SWIR_CIRRUS', 'SWIR_1', 'SWIR_2'])
+'''Descriptive names of the bands (coastal aerosol, blue... vegetation red edge, water vapour, cirrus).'''
 
 BAND_ID = [b.replace('B', '') for b in BAND_NAMES]
+'''Band identifiers of the product file names (``*_B<id>.jp2``): ``01`` ... ``8A`` ... ``12``.'''
+
 NATIVE_RESOLUTION = [60, 10, 10, 10, 20, 20, 20, 10, 20, 60, 60, 20, 20]
+'''Native pixel size of the bands (m).'''
+
 WAVELENGTH = np.array([443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1375, 1610, 2190])
+'''Nominal central wavelength of the bands (nm), used as the ``wl`` coordinate of the products.'''
+
 BAND_WIDTH = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 30, 90, 180]
+'''Nominal bandwidth of the bands (nm).'''
 
 INFO = pd.DataFrame({'bandId': range(13),
                      'ESA': BAND_NAMES,
@@ -47,6 +66,10 @@ INFO = pd.DataFrame({'bandId': range(13),
                      'Wavelength (nm)': WAVELENGTH,
                      'Band width (nm)': BAND_WIDTH,
                      'Resolution (m)': NATIVE_RESOLUTION}).set_index('bandId').T
+'''
+Table of the bands (one column per band index): ESA name, descriptive name, nominal
+wavelength (nm), bandwidth (nm) and native resolution (m). Display it to choose ``band_idx``.
+'''
 
 
 def _text(value):
@@ -178,6 +201,10 @@ class Sentinel2Driver():
     GRSdriver to get a lazy (dask-backed) product; the geometry is then chunked
     as the bands.
 
+    The data are loaded by :meth:`load_product`, or separately by :meth:`load_bands`
+    and :meth:`load_geom`. The other methods are the steps of the computation of the
+    viewing angles, documented for advanced uses.
+
     :param imageSAFE: path to the ``.SAFE`` directory of the L1C product
     :param band_idx: indices of the bands to load, in
         ``B01, B02, B03, B04, B05, B06, B07, B08, B8A, B09, B10, B11, B12``
@@ -200,6 +227,20 @@ class Sentinel2Driver():
     :param geom_chunks: size (pixels) of the ``y`` and ``x`` chunks of the lazy
         geometry when the bands are not dask-backed
     :param verbose: print progress and fitting reports
+
+    :ivar prod: the product (``xarray.Dataset``), filled by :meth:`load_product` or :meth:`load_bands`
+    :ivar geom: sun and viewing angles on the ``resolution_angle`` grid, filled by :meth:`load_geom`
+    :ivar metadata: main metadata of the product, as a flat dict of strings (see :func:`flat_metadata`)
+    :ivar metadata2: full product metadata (``MTD_MSIL1C.xml``) parsed with ``xmltodict``
+    :ivar datetime: acquisition time (``datetime.datetime``, datatake sensing start)
+    :ivar processing_baseline: processing baseline of the product (e.g. 5.1)
+    :ivar crs: CRS of the tile (``rasterio.crs.CRS``, UTM)
+    :ivar epsg: EPSG code of the CRS
+    :ivar extent: footprint of the tile (``geopandas.GeoDataFrame``, in ``crs``)
+    :ivar transform: affine transform of the full tile at ``resolution``
+    :ivar solar_irradiance: solar irradiance of the bands (band index, W/m²/µm)
+    :ivar SRFs: spectral response functions of the selected bands (``xarray.DataArray``)
+    :ivar INFO: :data:`INFO` table of the selected bands
     '''
 
     def __init__(self, imageSAFE,

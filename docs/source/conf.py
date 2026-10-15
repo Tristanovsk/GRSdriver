@@ -64,9 +64,10 @@ autoapi_add_toctree_entry = False
 autoapi_member_order = 'bysource'
 # constructor parameters are documented in the class docstrings
 autoapi_python_class_content = 'class'
+# only documented members: the internal attributes of the drivers are left out, the main ones
+# are described in the class docstrings (:ivar:)
 autoapi_options = [
     'members',
-    'undoc-members',
     'show-inheritance',
     'show-module-summary',
 ]

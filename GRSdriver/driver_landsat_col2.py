@@ -1,10 +1,18 @@
 '''
 Driver for Landsat 8 and 9 (OLI/TIRS) Collection 2 Level-1 products.
 
-Reads the bands (GeoTIFF) and converts them to TOA reflectance or brightness
-temperature with the coefficients of the ``*_MTL.xml`` metadata file, and loads
-the sun/viewing angles from the angle GeoTIFFs and the L1 quality bitmask
-(see :class:`LandsatDriver`).
+:class:`LandsatDriver` reads the bands (GeoTIFF) on a common grid, converts them into TOA
+reflectance (OLI) or brightness temperature (TIRS) with the coefficients of the ``*_MTL.xml``
+metadata file, and loads the sun/viewing angles from the angle files and the L1 quality bitmask.
+:data:`INFO` lists the 11 bands of OLI and TIRS.
+
+Example::
+
+    from GRSdriver import LandsatDriver
+
+    l1 = LandsatDriver('LC09_L1TP_..._02_T1', band_idx=[1, 2, 4, 5, 9], resolution=30)
+    l1.load_product()
+    l1.prod.bands.sel(wl=11000)   # brightness temperature (K)
 '''
 
 import datetime
@@ -31,15 +39,26 @@ from .utils import use_dask, DASK_CHUNKS, read_on_grid, stack_bands, get_bounds,
 opj = os.path.join
 
 BAND_NAMES = np.array(['B01', 'B02', 'B03', 'B08', 'B04', 'B05', 'B09', 'B06', 'B07','B08','B09'])
+'''Names of the closest Sentinel-2 bands (internal use); the Landsat band numbers are in :data:`BAND_NUMBER`.'''
+
 BAND_LONG_NAMES = np.array(['CA', 'BLUE', 'GREEN', 'PAN', 'RED', 'NIR',
                             'SWIR_CIRRUS', 'SWIR_1', 'SWIR_2','TIR_1','TIR_2'])
-# band number in the Landsat file names (``*_B<n>.TIF``) and metadata
+'''Descriptive names of the bands, in the order of the band indices (``band_idx``) 0 to 10.'''
+
 BAND_NUMBER = np.array([1, 2, 3, 8, 4, 5, 9, 6, 7, 10, 11])
+'''Landsat band numbers, as in the product file names (``*_B<n>.TIF``) and metadata.'''
 
 BAND_ID = [b.replace('B', '') for b in BAND_NAMES]
+'''Identifiers derived from :data:`BAND_NAMES` (internal use).'''
+
 NATIVE_RESOLUTION = [30, 30, 30, 15, 30, 30, 30, 30, 30,100,100]
+'''Native pixel size of the bands (m); the TIRS bands are delivered resampled at 30 m.'''
+
 WAVELENGTH = np.array([443, 490, 560, 590, 665, 865, 1370, 1610, 2190,11000,12000])
+'''Nominal central wavelength of the bands (nm), used as the ``wl`` coordinate of the products.'''
+
 BAND_WIDTH = [25, 60, 60, 173, 33, 28, 21, 95, 287,590,1010]
+'''Nominal bandwidth of the bands (nm).'''
 
 INFO = pd.DataFrame({'bandId': range(len(BAND_NAMES)),
                      'ESA': BAND_NAMES,
@@ -48,9 +67,14 @@ INFO = pd.DataFrame({'bandId': range(len(BAND_NAMES)),
                      'Wavelength (nm)': WAVELENGTH,
                      'Band width (nm)': BAND_WIDTH,
                      'Resolution (m)': NATIVE_RESOLUTION}).set_index('bandId').T
+'''
+Table of the bands (one column per band index): Sentinel-2 equivalent, descriptive name, Landsat
+band number, nominal wavelength (nm), bandwidth (nm) and native resolution (m). Display it to
+choose ``band_idx``.
+'''
 
-# QA_PIXEL value of the fill (no data) pixels
 QA_FILL = 1
+'''Value of the fill (no data) pixels in the ``QA_PIXEL`` bitmask (``flags_l1``).'''
 
 
 class LandsatDriver():
@@ -90,6 +114,9 @@ class LandsatDriver():
     With ``GRSDRIVER_USE_DASK=1`` set before importing GRSdriver, the product is
     lazy (dask-backed) and all variables share the chunks of the bands.
 
+    The data are loaded by :meth:`load_product`, or separately by :meth:`load_bands`,
+    :meth:`load_geom` and :meth:`load_mask`.
+
     :param image_path: path to the directory of the L1 product
     :param band_idx: indices of the bands to load, in
         ``CA, BLUE, GREEN, PAN, RED, NIR, SWIR_CIRRUS, SWIR_1, SWIR_2, TIR_1, TIR_2``
@@ -102,6 +129,23 @@ class LandsatDriver():
         product CRS
     :param resolution: pixel size (m) of the output bands
     :param verbose: verbosity flag
+
+    :ivar prod: the product (``xarray.Dataset``), filled by :meth:`load_product` or :meth:`load_bands`
+    :ivar geom: sun and viewing angles on their native grid, filled by :meth:`load_geom`
+    :ivar mask: L1 quality bitmask (``flags_l1``), filled by :meth:`load_mask`
+    :ivar metadata: product metadata (``*_MTL.xml``) parsed with ``xmltodict``
+    :ivar product_name: Landsat product identifier (e.g. ``LC09_L1TP_196030_20221120_20230321_02_T1``)
+    :ivar satellite: ``Landsat-8`` or ``Landsat-9``
+    :ivar constellation_id: ``L8`` or ``L9``
+    :ivar tile: WRS-2 path and row (e.g. ``196030``)
+    :ivar datetime: acquisition time (``datetime.datetime``, scene center time)
+    :ivar cloud_cover: cloud cover of the scene (%)
+    :ivar crs: CRS of the scene (``rasterio.crs.CRS``, UTM)
+    :ivar epsg: EPSG code of the CRS
+    :ivar extent: footprint of the scene (``geopandas.GeoDataFrame``, in ``crs``)
+    :ivar transform: affine transform of the full scene at ``resolution``
+    :ivar SRFs: spectral response functions of the bands (``xarray.Dataset``)
+    :ivar INFO: :data:`INFO` table of the selected bands
     '''
 
     def __init__(self, image_path,

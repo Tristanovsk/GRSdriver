@@ -1,4 +1,13 @@
+'''
+Tools shared by the drivers, and spatial helpers for the users.
 
+- Reading: :func:`read_on_grid` reads a raster directly on a target grid, :func:`stack_bands`
+  stacks the bands of a product, :func:`get_bounds` and :func:`subset_grid` turn a ``subset``
+  into an output grid.
+- Lazy loading: the drivers return dask-backed products when :func:`use_dask` is True, i.e. when
+  the environment variable ``GRSDRIVER_USE_DASK=1`` is set before importing GRSdriver.
+- :class:`SpatioTemp`: build a region of interest around a point, rasterize shapes, clip rasters.
+'''
 
 import math
 import os
@@ -18,12 +27,14 @@ from rasterio.vrt import WarpedVRT
 from affine import Affine
 import geopandas as gpd
 
-# environment variable switching the drivers to lazy (dask-backed) loading
 USE_DASK = 'GRSDRIVER_USE_DASK'
-# former name (EOReader), still accepted
+'''Name of the environment variable switching the drivers to lazy (dask-backed) loading.'''
+
 USE_DASK_LEGACY = 'EOREADER_USE_DASK'
-# dask chunks of the lazy products (sizes chosen by dask)
+'''Former name of :data:`USE_DASK` (GRSdriver < 2.0), still accepted.'''
+
 DASK_CHUNKS = {'x': 'auto', 'y': 'auto'}
+'''Dask chunks of the lazy products (sizes chosen by dask).'''
 
 
 def use_dask():
@@ -167,8 +178,9 @@ def subset_grid(transform, width, height, bounds=None):
 
 class SpatioTemp():
     '''
-    Spatial helpers: build a box around a point (e.g. to define a ``subset``
-    of the drivers), rasterize shapes and clip rasters.
+    Spatial helpers: build a box around a point (:meth:`~GRSdriver.utils.SpatioTemp.wktbox`, e.g. to define the
+    ``subset`` of the drivers), rasterize shapes (:meth:`~GRSdriver.utils.SpatioTemp.rasterize`) and clip a raster
+    around a point (:meth:`~GRSdriver.utils.SpatioTemp.clip_raster`).
     '''
 
     def wktbox(self,
@@ -179,18 +191,27 @@ class SpatioTemp():
                ellps='WGS84'):
 
         '''
+        Rectangle of ``width`` x ``height`` meters centered on a point, e.g. to define
+        the ``subset`` of the drivers::
 
-        :param center_lon: decimal longitude
-        :param center_lat: decimal latitude
-        :param width: width of the box in m
-        :param height: height of the box in m
-        :return: wkt of the box centered on provided coordinates
+            box = SpatioTemp().wktbox(5.10, 43.47, width=20000, height=15000)
+            subset = geopandas.GeoSeries.from_wkt([box], crs=4326)
+
+        The corners are computed on the ellipsoid (geodesic distance and azimuth from the
+        center): the box is aligned with the meridians at its center.
+
+        :param center_lon: longitude of the center (deg)
+        :param center_lat: latitude of the center (deg)
+        :param width: width of the box (m, west-east)
+        :param height: height of the box (m, south-north)
+        :param ellps: ellipsoid (``pyproj.Geod``)
+        :return: WKT polygon of the box (lon/lat, EPSG:4326)
         '''
 
-        #width,height = width/2 , height/2
         geod = pyproj.Geod(ellps=ellps)
 
-        rect_diag = np.sqrt(width ** 2 + height ** 2)
+        # distance from the center to the corners: half the diagonal
+        rect_diag = np.sqrt(width ** 2 + height ** 2) / 2
 
         azimuth1 = np.arctan(width / height)
         azimuth2 = np.arctan(-width / height)
@@ -253,17 +274,19 @@ class SpatioTemp():
     @staticmethod
     def clip_raster(raster, lat, lon, extent_m):
         '''
-        :param raster as rioxarray object with documented coordinate system
-        :param lat: latitude (float) of central point of buffer
-        :param lon: longitude (float) of central point of buffer
-        :param extent_m: extent of square centered on lat/lon
-        :param crs: crs for reprojection, use lat/lon epsg4326 otherwise.
+        Clip a raster to a square centered on a point.
+
+        The square is built in the local UTM projection of the point, then reprojected
+        into the CRS of the raster.
+
+        :param raster: DataArray or Dataset with its CRS (``rio`` accessor)
+        :param lat: latitude of the center (deg)
+        :param lon: longitude of the center (deg)
+        :param extent_m: size of the side of the square (m)
         :return: clipped raster
         '''
-        # distance is d/2 of the square buffer around the point,
-        # from center to corner;
-        # find buffer width in meters
-        buffer_width_m = extent_m / np.sqrt(2)
+        # a square buffer (cap_style=3) of distance d has sides of 2 d
+        buffer_width_m = extent_m / 2
 
         # EPSG:4326 sets Coordinate Reference System to WGS84 to match input
         wgs84_pt_gdf = gpd.GeoDataFrame(geometry=gpd.points_from_xy([lon], [lat], crs='4326'))
