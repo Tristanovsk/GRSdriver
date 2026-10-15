@@ -15,6 +15,14 @@ bindings (`osgeo`) are no longer used.
   installed through EOReader); `matplotlib` and `cartopy`, needed by the `grs_driver` command
   line, in the new `cli` extra (`pip install "GRSdriver[cli]"`). GRSdriver now installs with pip
   only (no conda GDAL needed): checked in a clean virtualenv.
+- Dependencies: `pystac`, `fiona` and `pyyaml` removed (never imported); `geopandas>=1.0`
+  (files read with pyogrio).
+- Sentinel-2: the plane fit of the viewing angles uses least squares (numpy) instead of the
+  orthogonal distance regression of `scipy.odr`, deprecated and removed in SciPy 1.19. Same
+  angles (differences below the float32 precision) except for a detector seen on a single
+  row or column of the angle grid (tile edge), whose slope across that line is not constrained
+  by the data: it is now 0 instead of an arbitrary ODR value (e.g. 0.26 % of the pixels of
+  T32TQR on 2018-06-18, up to 0.5 deg on `vza` and 6.7 deg on `raa`).
 - Sentinel-2: the bands are read with rasterio/GDAL directly on the output grid and converted
   with the quantification value and `RADIO_ADD_OFFSET` of `MTD_MSIL1C.xml`; the detector
   footprints are read from the `MSK_DETFOO` jp2 (baseline >= 4.0) or GML (< 4.0) masks.

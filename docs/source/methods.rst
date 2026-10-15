@@ -191,17 +191,20 @@ for each band :math:`b` and each detector :math:`d`, the angle :math:`\alpha`
 
 The coefficients :math:`\boldsymbol\beta_{b,d} = (\beta_0, \beta_1, \beta_2)` are fitted on the
 :math:`n` valid nodes :math:`(x_k, y_k, \alpha_k)` of the detector grid (NaN nodes removed) by
-orthogonal distance regression (``scipy.odr``), which minimizes the sum of squared orthogonal
-distances between the nodes and the plane, i.e. accounts for errors on the coordinates
-:math:`\mathbf{p}_k = (x_k, y_k)` as well as on the angles:
+least squares:
 
 .. math::
 
-    \hat{\boldsymbol\beta}_{b,d} = \arg\min_{\boldsymbol\beta,\, \boldsymbol\delta}
-    \sum_{k=1}^{n} \Big[ \big(\alpha_k - \alpha(\mathbf{p}_k + \boldsymbol\delta_k;
-    \boldsymbol\beta)\big)^2 + \lVert \boldsymbol\delta_k \rVert^2 \Big]
+    \hat{\boldsymbol\beta}_{b,d} = \arg\min_{\boldsymbol\beta}
+    \sum_{k=1}^{n} \big(\alpha_k - \beta_0 x_k - \beta_1 y_k - \beta_2\big)^2
 
-starting from :math:`\boldsymbol\beta = (0, 0, \bar\alpha)`.
+solved on coordinates centred on the nodes and expressed in km (well-conditioned problem).
+Until v1.1.1 the fit was an orthogonal distance regression (``scipy.odr``, deprecated): as the
+slopes are tiny in the product units (deg/m), the orthogonal and vertical distances are equal and
+both methods give the same angles (differences below the float32 precision). The exception is a
+detector seen on a single row or column of nodes, at the tile edge: the slope across this line
+is not constrained by the data. The minimum-norm least-squares solution sets it to 0, whereas
+ODR returned an arbitrary value (depending on its starting point).
 
 The detector footprint mask (``DETFOO``) of the L1C product gives the detector
 :math:`D_b(x, y)` that sees each pixel. The angle of a pixel is the plane of that detector:

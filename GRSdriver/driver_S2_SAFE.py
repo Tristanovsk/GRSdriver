@@ -24,7 +24,6 @@ import xmltodict
 from rasterio.crs import CRS
 from rasterio.enums import Resampling
 from rasterio.features import rasterize
-import scipy.odr as odr
 from affine import Affine
 from shapely.geometry import box
 
@@ -147,7 +146,7 @@ class Sentinel2Driver():
 
     The viewing angles are provided in the metadata on a coarse 5 km grid for
     each band and each detector. For each band and detector, a plane is fitted
-    to these values (orthogonal distance regression); the plane of the detector
+    to these values (least squares); the plane of the detector
     seen by each pixel (detector footprint mask ``DETFOO``) is then evaluated on
     the ``resolution_angle`` grid. The result is resampled (nearest neighbour)
     on the grid of the bands.
@@ -672,45 +671,40 @@ class Sentinel2Driver():
 
     def data_fitting(self, x0, y0, arr):
         '''
-        Fit a plane to the angle grid ``arr`` with orthogonal distance regression,
-        NaN values being ignored.
+        Fit a plane to the angle grid ``arr`` by least squares, NaN values being ignored.
+
+        The coordinates are centred and scaled (km) for a well-conditioned problem.
+        When the valid nodes are aligned (detector seen on a single row or column of
+        the grid, at the tile edge), the slope across the alignment is undetermined:
+        the minimum-norm solution sets it to 0.
 
         :param x0: x coordinates of ``arr``
         :param y0: y coordinates of ``arr``
         :param arr: 2D DataArray of the angles
         :return: plane coefficients (see :meth:`linfit`)
         '''
-        # ---------------------------------
-        # ODR multilinear regression
-        # ---------------------------------
         xgrid, ygrid = np.meshgrid(x0, y0, indexing=self.indexing)
 
-        # vectorize
-        values = arr.values.flatten()
-        x_ = xgrid.flatten()
-        y_ = ygrid.flatten()
-
-        # remove NaN
+        # vectorize and remove NaN
+        values = arr.values.ravel()
         idx = ~np.isnan(values)
         values = values[idx]
-        points = np.empty((2, len(values)))
-        points[0] = x_[idx]
-        points[1] = y_[idx]
+        x_ = xgrid.ravel()[idx]
+        y_ = ygrid.ravel()[idx]
 
-        # set ODR fitting
-        mean = np.nanmean(values)
-        linear = odr.Model(self.linfit)
-        data = odr.Data(points, values)
-        beta0 = [0, 0, mean]
-
-        # proceed with ODR fitting
-        fit = odr.ODR(data, linear, beta0=beta0)
-        resfit = fit.run()
+        # least squares on centred coordinates in km
+        xm, ym, scale = x_.mean(), y_.mean(), 1000.
+        design = np.column_stack([(x_ - xm) / scale, (y_ - ym) / scale, np.ones_like(x_)])
+        coef, _, rank, _ = np.linalg.lstsq(design, values, rcond=None)
 
         if self.verbose:
-            resfit.pprint()
+            rms = np.sqrt(np.mean((design @ coef - values) ** 2))
+            print('plane fit: {} nodes, rank {}, slopes {:.4f} {:.4f} deg/km, rms {:.4f} deg'.format(
+                len(values), rank, coef[0], coef[1], rms))
 
-        return resfit.beta
+        # back to the product coordinates
+        return np.array([coef[0] / scale, coef[1] / scale,
+                         coef[2] - coef[0] * xm / scale - coef[1] * ym / scale])
 
     def get_detector_mask(self, bandId=0,
                           resolution=20,

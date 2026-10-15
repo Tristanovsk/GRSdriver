@@ -157,7 +157,7 @@ Log Format
 
 GRSdriver writes no log file. At import, the level of the root ``logging`` logger is set to
 ``INFO``. Messages are emitted with the standard ``logging`` module (command line) and
-``print`` (progress with ``verbose=True``, ODR fitting reports of the viewing angles). The calling application (e.g. GRS) configures the
+``print`` (progress and plane-fitting reports of the viewing angles with ``verbose=True``). The calling application (e.g. GRS) configures the
 handlers and the format of the records.
 
 Required Resources
