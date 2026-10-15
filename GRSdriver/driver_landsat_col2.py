@@ -9,7 +9,6 @@ the sun/viewing angles from the angle GeoTIFFs and the L1 quality bitmask
 
 import datetime
 import glob
-import math
 import os
 
 import numpy as np
@@ -27,7 +26,7 @@ from shapely.geometry import box
 from importlib_resources import files
 
 from . import __package__
-from .utils import use_dask, read_on_grid
+from .utils import use_dask, DASK_CHUNKS, read_on_grid, stack_bands, get_bounds, subset_grid
 
 opj = os.path.join
 
@@ -88,7 +87,7 @@ class LandsatDriver():
     i.e. not band specific. They are interpolated only if their grid differs from
     the bands (other ``resolution`` or ``subset``).
 
-    With ``EOREADER_USE_DASK=1`` set before importing GRSdriver, the product is
+    With ``GRSDRIVER_USE_DASK=1`` set before importing GRSdriver, the product is
     lazy (dask-backed) and all variables share the chunks of the bands.
 
     :param image_path: path to the directory of the L1 product
@@ -225,17 +224,6 @@ class LandsatDriver():
             raise FileNotFoundError('No *_' + suffix + '.TIF file in ' + self.abspath)
         return file[0]
 
-    def _get_window(self, subset):
-        '''
-        Convert ``subset`` (see :class:`LandsatDriver`) into bounds
-        ``(minx, miny, maxx, maxy)`` in the product CRS.
-        '''
-        if subset is None:
-            return None
-        if hasattr(subset, 'to_crs'):
-            return tuple(subset.to_crs(self.crs).total_bounds)
-        return tuple(subset[0])
-
     def _get_grid(self, subset=None):
         '''
         Output grid: the scene grid at the product resolution, cropped to the
@@ -243,20 +231,7 @@ class LandsatDriver():
 
         :return: (transform, width, height)
         '''
-        res = self.resolution
-        x0, y0 = self.transform.c, self.transform.f
-        col0, col1, row0, row1 = 0, self.width, 0, self.height
-        window = self._get_window(subset)
-        if window is not None:
-            minx, miny, maxx, maxy = window
-            col0 = max(col0, math.floor((minx - x0) / res))
-            col1 = min(col1, math.ceil((maxx - x0) / res))
-            row0 = max(row0, math.floor((y0 - maxy) / res))
-            row1 = min(row1, math.ceil((y0 - miny) / res))
-            if col1 <= col0 or row1 <= row0:
-                raise ValueError('subset does not intersect the image ' + self.abspath)
-        transform = Affine(res, 0., x0 + col0 * res, 0., -res, y0 - row0 * res)
-        return transform, col1 - col0, row1 - row0
+        return subset_grid(self.transform, self.width, self.height, get_bounds(subset, self.crs))
 
     def _match_grid(self, ds, method='linear'):
         '''
@@ -337,7 +312,7 @@ class LandsatDriver():
         Load the L1 quality bitmask (``QA_PIXEL``) in ``self.mask``
         (variable ``flags_l1``) at the product resolution and subset.
         '''
-        chunks = True if use_dask() else None
+        chunks = DASK_CHUNKS if use_dask() else None
         qa = self._read_qa(self._get_grid(self.subset), chunks=chunks).astype(np.uint32)
         # fill pixels are valid flag values: no _FillValue (would be decoded as NaN)
         qa.attrs, qa.encoding = {}, {}
@@ -360,22 +335,10 @@ class LandsatDriver():
         # getting bands
         # ----------------------------------
         grid = self._get_grid(subset)
-        chunks = True if use_dask() else None
+        chunks = DASK_CHUNKS if use_dask() else None
         qa = self._read_qa(grid, chunks=chunks)
-        band_numbers = self.INFO.loc['Landsat band'].values
-        if chunks:
-            bands = xr.concat([self._read_band(n, grid, qa=qa, chunks=chunks) for n in band_numbers],
-                              dim='bands')
-        else:
-            # bands loaded one by one into a preallocated array (low memory)
-            bands = None
-            for iband, band_number in enumerate(band_numbers):
-                band = self._read_band(band_number, grid, qa=qa)
-                if bands is None:
-                    bands = xr.DataArray(np.empty((len(band_numbers),) + band.shape, dtype=np.float32),
-                                         dims=('bands',) + band.dims, coords=band.coords)
-                bands.values[iband] = band.values
-                del band
+        bands = stack_bands(lambda n: self._read_band(n, grid, qa=qa, chunks=chunks),
+                            self.INFO.loc['Landsat band'].values, lazy=bool(chunks))
         del qa
         bands.rio.write_nodata(np.nan, encoded=True, inplace=True)
 
@@ -448,7 +411,7 @@ class LandsatDriver():
         # basic angle loading from geotiff (mean value of bands, needs to be improved for each band separately)
 
         # lazy reading in dask mode
-        chunks = True if use_dask() else None
+        chunks = DASK_CHUNKS if use_dask() else None
         geom = []
         for geom_ in geoms:
             ang_file = glob.glob(opj(self.abspath, '*' + geom_[1] + '.TIF'))[0]

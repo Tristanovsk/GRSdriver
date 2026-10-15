@@ -1,12 +1,13 @@
 '''
 Driver for Sentinel-2 MSI Level-1C products (SAFE format).
 
-Loads the top-of-atmosphere reflectance bands with EOReader and computes the
-per-band sun and viewing geometry from the granule metadata
+Reads the bands (JPEG2000) and converts them into top-of-atmosphere reflectance
+with the quantification value and radiometric offsets of the product metadata,
+and computes the per-band sun and viewing geometry from the granule metadata
 (see :class:`Sentinel2Driver`).
 '''
 
-import gc
+import datetime
 import glob
 import os
 import xml.etree.ElementTree as ET
@@ -20,30 +21,22 @@ import geopandas as gpd
 import xarray as xr
 import xmltodict
 
+from rasterio.crs import CRS
+from rasterio.enums import Resampling
 from rasterio.features import rasterize
 import scipy.odr as odr
 from affine import Affine
-from osgeo import gdal, ogr
-#import cartopy.crs as ccrs
-from pyproj import CRS
-import eoreader as eo
-
-from eoreader.reader import Reader
-from eoreader.env_vars import USE_DASK
+from osgeo import gdal
+from shapely.geometry import box
 
 from . import __package__
-from .utils import stack_bands
-
-# EOReader uses dask if == 1. Default to "0": with dask, EOReader computes and writes
-# each cleaned band to its disk cache through a much slower path (~3x for a full S2 tile).
-# Set EOREADER_USE_DASK=1 beforehand to get lazy (dask-backed) products.
-os.environ.setdefault(USE_DASK, "0")
+from .utils import use_dask, DASK_CHUNKS, read_on_grid, stack_bands, get_bounds, subset_grid
 
 opj = os.path.join
 BAND_NAMES = np.array(['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'])
-BAND_NAMES_EOREADER = np.array(['CA', 'BLUE', 'GREEN', 'RED', 'VRE_1',
-                                'VRE_2', 'VRE_3', 'NIR', 'NARROW_NIR',
-                                'WV', 'SWIR_CIRRUS', 'SWIR_1', 'SWIR_2'])
+BAND_LONG_NAMES = np.array(['CA', 'BLUE', 'GREEN', 'RED', 'VRE_1',
+                            'VRE_2', 'VRE_3', 'NIR', 'NARROW_NIR',
+                            'WV', 'SWIR_CIRRUS', 'SWIR_1', 'SWIR_2'])
 
 BAND_ID = [b.replace('B', '') for b in BAND_NAMES]
 NATIVE_RESOLUTION = [60, 10, 10, 10, 20, 20, 20, 10, 20, 60, 60, 20, 20]
@@ -52,7 +45,7 @@ BAND_WIDTH = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 30, 90, 180]
 
 INFO = pd.DataFrame({'bandId': range(13),
                      'ESA': BAND_NAMES,
-                     'EOREADER': BAND_NAMES_EOREADER,
+                     'name': BAND_LONG_NAMES,
                      'Wavelength (nm)': WAVELENGTH,
                      'Band width (nm)': BAND_WIDTH,
                      'Resolution (m)': NATIVE_RESOLUTION}).set_index('bandId').T
@@ -94,9 +87,13 @@ class Sentinel2Driver():
     - coordinates ``wl`` (nominal wavelength, nm), ``x``, ``y`` (product CRS)
       and ``time``; native metadata and solar irradiance in ``attrs``.
 
-    EOReader returns numpy arrays by default: with dask enabled, EOReader
-    computes and writes each band in its cache through a much slower path.
-    Set the environment variable ``EOREADER_USE_DASK=1`` before importing
+    The output grid has the pixel size ``resolution`` and is aligned on the
+    upper-left corner of the tile. The bands are averaged when degraded
+    (e.g. 10 m bands at 20 m) and bilinearly interpolated when refined
+    (e.g. 60 m bands at 20 m). Pixels outside the detector footprint
+    (``MSK_DETFOO``) are set to NaN and negative values to 0.
+
+    Set the environment variable ``GRSDRIVER_USE_DASK=1`` before importing
     GRSdriver to get a lazy (dask-backed) product; the geometry is then chunked
     as the bands.
 
@@ -107,9 +104,10 @@ class Sentinel2Driver():
     :param band_tbp_idx: indices of the bands to be processed downstream
         (stored as ``prod.attrs['wl_to_process']``); by default all but
         B09 (water vapour) and B10 (cirrus)
-    :param subset: optional spatial subset: a ``geopandas.GeoSeries`` (any CRS,
-        its bounding box is used), or a sequence whose first element is passed as
-        ``window`` to EOReader
+    :param subset: optional spatial subset: a ``geopandas.GeoSeries`` or
+        ``GeoDataFrame`` (any CRS, its bounding box is used), or a sequence whose
+        first element is the bounding box ``(minx, miny, maxx, maxy)`` in the
+        product CRS
     :param resolution: pixel size (m) of the output bands
     :param resolution_angle: pixel size (m) of the grid on which the viewing
         angles are computed: 10, 20 or 60 (coarser is faster and lighter)
@@ -121,7 +119,6 @@ class Sentinel2Driver():
     :param geom_chunks: size (pixels) of the ``y`` and ``x`` chunks of the lazy
         geometry when the bands are not dask-backed
     :param verbose: print progress and fitting reports
-    :param kwargs: passed to ``eoreader.reader.Reader.open``
     '''
 
     def __init__(self, imageSAFE,
@@ -132,10 +129,9 @@ class Sentinel2Driver():
                  resolution_angle=60,
                  lazy_geom=False,
                  geom_chunks=1024,
-                 verbose=False,
-                 **kwargs):
+                 verbose=False):
 
-        abspath = os.path.abspath(imageSAFE)
+        self.abspath = abspath = os.path.abspath(imageSAFE)
         dirroot, basename = os.path.split(abspath)
         self.verbose = verbose
         self.band_idx = band_idx
@@ -203,27 +199,37 @@ class Sentinel2Driver():
         self.SRFs = xr.concat(SRFs, dim='wl')
         self.SRFs.attrs['description'] = 'Spectral response function of each band'
 
-        # Open instance of eoreader
-        reader = Reader()
+        general_info = self.metadata2['n1:Level-1C_User_Product']['n1:General_Info']
+        self.processing_baseline = float(general_info['Product_Info']['PROCESSING_BASELINE'])
+        # Sentinel-2 datetime (in the product name) is the datatake sensing time
+        self.datetime = datetime.datetime.strptime(basename.split('_')[2], '%Y%m%dT%H%M%S')
 
-        # Open the product
-        reader = reader.open(imageSAFE, remove_tmp=True, **kwargs)
-        self.reader = reader
-        self.processing_baseline = reader._processing_baseline
-        self.datetime = reader.datetime
+        # radiometric conversion: reflectance = (DN + offset) / quantification value
+        image_char = general_info['Product_Image_Characteristics']
+        self.quantification_value = float(image_char['QUANTIFICATION_VALUE']['#text'])
+        self.radio_offset = np.zeros(len(BAND_NAMES))
+        if 'Radiometric_Offset_List' in image_char:
+            # processing baseline >= 4.0
+            for _ in image_char['Radiometric_Offset_List']['RADIO_ADD_OFFSET']:
+                self.radio_offset[int(_['@band_id'])] = float(_['#text'])
 
-        # save geographic data
-        self.extent = reader.extent()
+        # save geographic data (tile geocoding of the granule metadata)
+        self.granule_dir = os.path.dirname(self.xml_granule)
+        geocoding = ET.parse(self.xml_granule).getroot().find('.//Tile_Geocoding')
+        self.crs = CRS.from_string(geocoding.findtext('HORIZONTAL_CS_CODE'))
+        self.epsg = self.crs.to_epsg()
+        minx = float(geocoding.findtext("Geoposition[@resolution='10']/ULX"))
+        maxy = float(geocoding.findtext("Geoposition[@resolution='10']/ULY"))
+        maxx = minx + 10 * int(geocoding.findtext("Size[@resolution='10']/NCOLS"))
+        miny = maxy - 10 * int(geocoding.findtext("Size[@resolution='10']/NROWS"))
+        self.extent = gpd.GeoDataFrame(geometry=[box(minx, miny, maxx, maxy)], crs=self.crs)
         self.bounds = self.extent.bounds
-        minx, miny, maxx, maxy = self.bounds.values[0]
-        self.crs = self.reader.crs()
-        self.epsg = self.extent.crs.to_epsg()
-        # str_epsg = str(self.epsg)
-        # zone = str_epsg[-2:]
-        # is_south = str_epsg[2] == 7
-        # self.proj = ccrs.UTM(zone, is_south)
-        # self.proj = CRS.from_dict({'proj': 'utm', 'zone': zone, 'south': is_south})
+        # output grid of the bands
         self.transform = Affine(resolution, 0., minx, 0., -resolution, maxy)
+        self.band_width = int(round((maxx - minx) / resolution))
+        self.band_height = int(round((maxy - miny) / resolution))
+        # grid of the angles
+        self.transform_angle = Affine(resolution_angle, 0., minx, 0., -resolution_angle, maxy)
 
         # -------------------------
         # interpolation
@@ -233,28 +239,17 @@ class Sentinel2Driver():
         self.new_x = np.linspace(minx, maxx, self.width)
         self.new_y = np.linspace(miny, maxy, self.height)[::-1]
 
-        # ---------------------------------
-        # getting appropriate version of mask driver
-        # ---------------------------------
-        # TODO generalize to load all available masks
-        if self.processing_baseline < 4:
-            self._open_mask = reader._open_mask_lt_4_0
-        else:
-            self._open_mask = reader._open_mask_gt_4_0
-
     def load_product(self,
-                     add_time=True,
-                     **kwargs):
+                     add_time=True):
         '''
         Load bands and geometry into ``self.prod`` and add the native metadata
         as attributes (``satellite``, ``tile``, ``solar_irradiance``,
         ``mean_solar_zenith_angle``, ``acquisition_date``...).
 
         :param add_time: add the acquisition date as ``time`` coordinate
-        :param kwargs: passed to ``eoreader`` ``stack`` (see :meth:`load_bands`)
         '''
 
-        self.load_bands(subset=self.subset, add_time=add_time, **kwargs)
+        self.load_bands(subset=self.subset, add_time=add_time)
 
         self.load_geom()
         self.geom = self._nearest_to_band_grid(self.geom)
@@ -314,49 +309,115 @@ class Sentinel2Driver():
             del src, new
         return out.assign_coords(x=x, y=y)
 
+    def _get_grid(self, subset=None):
+        '''
+        Output grid: the tile grid at the product resolution, cropped to the
+        pixels intersecting ``subset`` (see :class:`Sentinel2Driver`).
+
+        :return: (transform, width, height)
+        '''
+        return subset_grid(self.transform, self.band_width, self.band_height,
+                           get_bounds(subset, self.crs))
+
+    def _get_file(self, pattern):
+        '''
+        Path of the granule file matching ``pattern`` (e.g. ``IMG_DATA/*_B02.jp2``).
+        '''
+        file = glob.glob(opj(self.granule_dir, pattern))
+        if not file:
+            raise FileNotFoundError('No ' + pattern + ' file in ' + self.granule_dir)
+        return file[0]
+
+    def _read_footprint(self, bandId, grid, chunks=None):
+        '''
+        Detector footprint of a band on ``grid`` (transform, width, height): number of
+        the detector seeing each pixel, 0 outside the swath (nearest neighbour).
+
+        :param bandId: band index (0 to 12)
+        :param grid: output grid
+        :param chunks: dask chunks (baseline >= 4.0 only), ``None`` to load into memory
+        :return: DataArray (y, x), uint8
+        '''
+        transform, width, height = grid
+        if self.processing_baseline < 4:
+            # GML polygons, detector number in gml_id: detector_footprint-B02-<detector>-<index>
+            mask_df = gpd.read_file(self._get_file('QI_DATA/MSK_DETFOO_B' + BAND_ID[bandId] + '.gml'))
+            detector_num = mask_df.gml_id.str.split('-', expand=True).values[:, 2].astype(int)
+            footprint = rasterize(shapes=zip(mask_df.geometry, detector_num), out_shape=(height, width),
+                                  transform=transform, fill=0, dtype=np.uint8)
+            x = transform.c + transform.a * (np.arange(width) + 0.5)
+            y = transform.f + transform.e * (np.arange(height) + 0.5)
+            return xr.DataArray(footprint, dims=('y', 'x'), coords=dict(x=x, y=y))
+        footprint = read_on_grid(self._get_file('QI_DATA/MSK_DETFOO_B' + BAND_ID[bandId] + '.jp2'), *grid,
+                                 resampling=Resampling.nearest, chunks=chunks)
+        footprint.attrs, footprint.encoding = {}, {}
+        return footprint
+
+    def _read_band(self, bandId, grid, chunks=None):
+        '''
+        Read band ``bandId`` on ``grid`` (see :meth:`_get_grid`) and convert the DN
+        into TOA reflectance. Pixels outside the detector footprint are set to NaN
+        and negative values to 0.
+
+        :param bandId: band index (0 to 12)
+        :param grid: output grid (transform, width, height)
+        :param chunks: dask chunks (lazy reading), ``None`` to load into memory
+        :return: DataArray (y, x), float32
+        '''
+        native_res = NATIVE_RESOLUTION[bandId]
+        if self.resolution > native_res:
+            resampling = Resampling.average
+        elif self.resolution < native_res:
+            resampling = Resampling.bilinear
+        else:
+            resampling = Resampling.nearest
+        # resampling computed in float32 (no rounding of averaged DN), DN = 0 ignored
+        dn = read_on_grid(self._get_file('IMG_DATA/*_B' + BAND_ID[bandId] + '.jp2'), *grid,
+                          resampling=resampling, nodata=0, dtype='float32', chunks=chunks)
+        valid = (dn != 0) & (self._read_footprint(bandId, grid, chunks=chunks).values != 0)
+        band = (dn + np.float32(self.radio_offset[bandId])) / np.float32(self.quantification_value)
+        return band.clip(min=0).where(valid).astype(np.float32)
+
+    def _product_attrs(self):
+        '''
+        Product metadata stored as attributes of ``prod``.
+        '''
+        product = self.metadata2['n1:Level-1C_User_Product']
+        datatake = product['n1:General_Info']['Product_Info']['Datatake']
+        product_name = os.path.basename(self.abspath).replace('.SAFE', '')
+        name = product_name.split('_')
+        return {'long_name': ' '.join(self.INFO.loc['name'].values),
+                'constellation': 'Sentinel-2',
+                'constellation_id': 'S2',
+                'product_path': self.abspath,
+                'product_name': product_name,
+                'instrument': 'MSI',
+                'product_type': 'MSIL1C',
+                'condensed_name': '{}_S2_{}_L1C_{}'.format(name[2], name[5], name[6][-6:]),
+                'orbit_direction': datatake['SENSING_ORBIT_DIRECTION'],
+                'radiometry': 'reflectance',
+                'cloud_cover': float(product['n1:Quality_Indicators_Info']['Cloud_Coverage_Assessment'])}
+
     def load_bands(self,
                    subset=None,
-                   add_time=True,
-                   **kwargs):
+                   add_time=True):
         '''
         Load the TOA reflectance bands into ``self.prod`` (variable ``bands``)
         along with the spectral response functions (``SRF``) and the central
         wavelengths (``wl_true``).
 
-        :param subset: spatial subset (see :class:`Sentinel2Driver`); with a subset,
-            the 2 edge pixels are removed to work around an EOReader issue
+        :param subset: spatial subset (see :class:`Sentinel2Driver`)
         :param add_time: add the acquisition date as ``time`` coordinate
-        :param kwargs: passed to ``eoreader`` ``stack``
         '''
 
         # ----------------------------------
         # getting bands
         # ----------------------------------
-        window=None
-        if subset is not None:
-
-            if subset.dtype == 'geometry':
-                window = subset.to_crs(self.crs).bounds.values[0]
-            else:
-                window = subset[0]
-
-            bands = stack_bands(self.reader, list(BAND_NAMES_EOREADER[self.band_idx]),
-                                  pixel_size=self.resolution,
-                                  window=window,
-                                  **kwargs)
-            # Warning!!! fix for issue in eoreader when subsetting multibands
-            # needs to remove edge pixels
-            Nwl, Ny, Nx = bands.shape
-            bands=bands.isel(x=slice(2, Nx - 2), y=slice(2, Ny - 2))
-        else:
-            bands = stack_bands(self.reader, list(BAND_NAMES_EOREADER[self.band_idx]),
-                                      pixel_size=self.resolution,
-                                      **kwargs)
-
-
-        # fix for naming in differnt EOreader versions
-        if 'z' in bands.coords:
-            bands = bands.rename({'z': 'bands'})
+        grid = self._get_grid(subset)
+        chunks = DASK_CHUNKS if use_dask() else None
+        bands = stack_bands(lambda bandId: self._read_band(bandId, grid, chunks=chunks),
+                            self.band_idx, lazy=bool(chunks))
+        bands.rio.write_nodata(np.nan, encoded=True, inplace=True)
 
         # ----------------------------------
         # setting up coordinates and dimensions
@@ -364,7 +425,8 @@ class Sentinel2Driver():
         self.prod = bands.assign_coords(wl=('bands', self.INFO.loc['Wavelength (nm)'])). \
             swap_dims({'bands': 'wl'}).drop_vars(['band', 'bands', 'variable'], errors='ignore')
         self.prod = self.prod.assign_coords(bandID=('wl', self.INFO.loc['ESA'].values))
-        self.prod = self.prod.to_dataset(name='bands', promote_attrs=True)
+        self.prod = self.prod.to_dataset(name='bands')
+        self.prod.attrs = self._product_attrs()
         self.prod.attrs['wl_to_process'] = WAVELENGTH[self.band_tbp_idx]
 
         # add spectral response function
@@ -572,30 +634,20 @@ class Sentinel2Driver():
                           resolution=20,
                           detector_mask_name='DETFOO'):
         '''
-        Rasterize the detector footprint of a band: each pixel gets the number
-        of the detector it is seen by.
+        Detector footprint of a band on the ``resolution_angle`` grid: each pixel
+        gets the number of the detector it is seen by (nearest neighbour), 0
+        outside the swath.
 
         :param bandId: band index (0 to 12)
-        :param resolution: pixel size (m) of the mask
-        :param detector_mask_name: name of the mask in the L1C product
-        :return: 2D numpy array of the detector numbers
+        :param resolution: pixel size (m) of the mask, must be ``resolution_angle``
+        :param detector_mask_name: kept for compatibility, only ``DETFOO`` is used
+        :return: 2D numpy array of the detector numbers (int8)
         '''
 
-        if self.processing_baseline < 4:
-            mask_df = self._open_mask(detector_mask_name, BAND_ID[bandId])
-            detector_num = mask_df.gml_id.str.split('-', expand=True).values[:, 2]
-            poly_shp = [[geom, int(value)] for geom, value in zip(mask_df.geometry, detector_num)]
-
-            mask = rasterize(shapes=poly_shp,
-                             out_shape=(self.height, self.width),
-                             transform=self.transform)
-        else:
-            # TODO deprecate 'resolution' argument, 'pixel_size' is used instead since EOReader 0.20
-            mask = self._open_mask(detector_mask_name, BAND_ID[bandId], resolution=resolution,
-                                   pixel_size=resolution).astype(np.int8)
-
-            mask = mask.squeeze()
-        return np.array(mask)
+        if resolution != self.resolution_angle:
+            raise ValueError('the detector mask is computed on the resolution_angle grid')
+        mask = self._read_footprint(bandId, (self.transform_angle, self.width, self.height)).values
+        return mask.astype(np.int8)
 
     def get_band_angle_as_numpy(self, xarr,
                                 bandId=0,
@@ -721,9 +773,7 @@ class Sentinel2Driver():
                                                             resolution=self.resolution_angle, mask=mask)
             raa[ibandId] = self.get_band_angle_as_numpy(raw_vazi, bandId=bandId,
                                                         resolution=self.resolution_angle, mask=mask)
-            # EOReader temporaries are kept in reference cycles: free them band by band
             del mask
-            gc.collect()
         # relative azimuth computed in place: raa = (vazi - sazi) % 360
         raa -= new_sun_ang.sazi.values.astype(np.float32)
         raa %= 360

@@ -33,7 +33,7 @@ import GRSdriver
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 from GRSdriver.utils import USE_DASK
-# Ensure EOReader uses dask
+# lazy (dask-backed) loading
 os.environ[USE_DASK] = "1"
 
 def main():

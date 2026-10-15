@@ -54,7 +54,6 @@
  dl-l8s2-uv                     0.1          UNKNOWN                                                                                          
  docutils                       0.19         BSD License; GNU General Public License (GPL); Public Domain; Python Software Foundation License 
  entrypoints                    0.4          MIT License                                                                                      
- eoreader                       0.16.1       Apache Software License                                                                          
  executing                      1.0.0        MIT License                                                                                      
  fastjsonschema                 2.16.2       BSD License                                                                                      
  flit-core                      3.7.1        BSD License                                                                                      
@@ -150,7 +149,6 @@
  s2driver                       1.0.0        MIT                                                                                              
  s3transfer                     0.6.0        Apache Software License                                                                          
  scipy                          1.9.1        BSD License                                                                                      
- sertit                         1.16.1       Apache Software License                                                                          
  six                            1.16.0       MIT License                                                                                      
  sniffio                        1.3.0        Apache Software License; MIT License                                                             
  snuggs                         1.4.7        MIT                                                                                              

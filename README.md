@@ -61,7 +61,7 @@ l1.load_product()
 ```
 
 For a full Sentinel-2 tile at 10 m, `Sentinel2Driver(..., lazy_geom=True)` keeps the per-band
-viewing angles lazy and saves several GB of memory. Set `EOREADER_USE_DASK=1` before importing
+viewing angles lazy and saves several GB of memory. Set `GRSDRIVER_USE_DASK=1` before importing
 GRSdriver to get a fully lazy (dask-backed) product.
 
 ### Command line

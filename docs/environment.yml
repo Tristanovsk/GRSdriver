@@ -19,7 +19,6 @@ dependencies:
     - numba
     - numpy
     - pandas>=2.0.3
-    - eoreader
     - pystac
     - holoviews
     - datashader

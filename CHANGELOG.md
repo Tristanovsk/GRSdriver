@@ -4,6 +4,29 @@ All notable changes to GRSdriver are listed here, most recent first.
 
 ## Unreleased
 
+EOReader is no longer a dependency (nor `sertit` and their dependencies).
+
+- Sentinel-2: the bands are read with rasterio/GDAL directly on the output grid and converted
+  with the quantification value and `RADIO_ADD_OFFSET` of `MTD_MSIL1C.xml`; the detector
+  footprints are read from the `MSK_DETFOO` jp2 (baseline >= 4.0) or GML (< 4.0) masks.
+  Results are identical to the EOReader version on full tiles for the native and averaged bands
+  (e.g. 10 m bands at 20 m), except:
+  - upsampled bands (e.g. 60 m bands at 20 m) are no longer rounded to integer DN (<= 0.5 DN);
+  - with a `subset`, the bands are now aligned with the full-tile grid (EOReader windows of the
+    10 m bands could be shifted by one pixel before averaging) and the 2 edge pixels are no
+    longer removed;
+  - at the swath edges, pixels with DN = 0 are NaN (they were 0) and averages ignore them;
+  - the detector of each pixel of the angle grid is taken with nearest neighbour (EOReader
+    averaged the detector numbers): `vza`/`raa` change on ~0.1 % of the pixels, at the
+    detector boundaries.
+- Sentinel-2, baseline < 4.0: fixed `vza`/`raa` all NaN when `resolution` differs from
+  `resolution_angle` (the GML detector footprints were rasterized with the wrong transform).
+- Sentinel-2: product attributes from the metadata (`constellation_id`, `orbit_direction`,
+  `cloud_cover`...); `product_filename` removed; `Sentinel2Driver` and `load_product` no longer
+  accept `**kwargs` (passed to EOReader); the `reader` attribute is removed.
+- Lazy loading switched by `GRSDRIVER_USE_DASK=1` (`EOREADER_USE_DASK` still accepted).
+- `utils.stack_bands` now stacks the bands of any reader function (EOReader version removed).
+
 - Landsat: the driver no longer uses EOReader. The bands are read with rasterio/GDAL (warped VRT
   on the output grid, only the needed pixels are read) and converted with the coefficients of the
   `*_MTL.xml` file. Results are identical to the EOReader version at 30 m, except:
@@ -15,7 +38,8 @@ All notable changes to GRSdriver are listed here, most recent first.
   the CAMS files; `orbit_direction` and `product_filename` attributes removed.
 - Landsat: `LandsatDriver` no longer accepts `**kwargs` (they were passed to EOReader), `subset`
   given as a sequence takes a bounding box in the product CRS, the `reader` attribute is removed.
-- `utils.read_on_grid`: read a raster on a target grid through a GDAL warped VRT.
+- `utils.read_on_grid`: read a raster on a target grid (window decoded once and resampled
+  in memory, or lazily through a GDAL warped VRT).
 
 ## v1.1.1 (2026-10-14)
 

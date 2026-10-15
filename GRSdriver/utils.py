@@ -1,6 +1,6 @@
 
 
-import gc
+import math
 import os
 
 import numpy as np
@@ -12,21 +12,28 @@ import pyproj
 import rasterio
 from rasterio import features
 from rasterio.enums import Resampling
+import rasterio.warp
+import rasterio.windows
 from rasterio.vrt import WarpedVRT
 from affine import Affine
 import geopandas as gpd
 
-# environment variable switching the drivers to lazy (dask-backed) loading;
-# same name as in EOReader so that a single variable drives both
-USE_DASK = 'EOREADER_USE_DASK'
+# environment variable switching the drivers to lazy (dask-backed) loading
+USE_DASK = 'GRSDRIVER_USE_DASK'
+# former name (EOReader), still accepted
+USE_DASK_LEGACY = 'EOREADER_USE_DASK'
+# dask chunks of the lazy products (sizes chosen by dask)
+DASK_CHUNKS = {'x': 'auto', 'y': 'auto'}
 
 
 def use_dask():
     '''
     True when lazy (dask-backed) loading is requested, i.e. when the environment
-    variable ``EOREADER_USE_DASK`` is set to ``1`` or ``true`` (default: ``0``).
+    variable ``GRSDRIVER_USE_DASK`` (or its former name ``EOREADER_USE_DASK``)
+    is set to ``1`` or ``true`` (default: ``0``).
     '''
-    return os.getenv(USE_DASK, '0').lower() in ('1', 'true')
+    value = os.getenv(USE_DASK, os.getenv(USE_DASK_LEGACY, '0'))
+    return value.lower() in ('1', 'true')
 
 
 def read_on_grid(path, transform, width, height,
@@ -35,9 +42,12 @@ def read_on_grid(path, transform, width, height,
                  dtype=None,
                  chunks=None):
     '''
-    Read the first band of a raster on a target grid (same CRS), through a
-    GDAL warped VRT: only the pixels needed for the target grid are read, and
-    the resampling (if any) is done by GDAL.
+    Read the first band of a raster on a target grid (same CRS): only the pixels
+    needed for the target grid are read, and the resampling (if any) is done by GDAL.
+
+    In memory (``chunks=None``), the source window is decoded at once and
+    resampled with ``rasterio.warp.reproject`` (a warped VRT decodes compressed
+    tiles, e.g. JPEG2000, several times); lazily, through a GDAL warped VRT.
 
     :param path: path of the raster file
     :param transform: affine transform of the target grid
@@ -52,6 +62,29 @@ def read_on_grid(path, transform, width, height,
     :return: DataArray (y, x), with the ``rio`` georeferencing
     '''
     with rasterio.open(path) as src:
+        if chunks is None:
+            # source window covering the target grid, with a margin for the resampling kernel
+            minx, maxy = transform * (0, 0)
+            maxx, miny = transform * (width, height)
+            inv = ~src.transform
+            col0, row0 = inv * (minx, maxy)
+            col1, row1 = inv * (maxx, miny)
+            col0, row0 = max(0, math.floor(col0) - 2), max(0, math.floor(row0) - 2)
+            col1, row1 = min(src.width, math.ceil(col1) + 2), min(src.height, math.ceil(row1) + 2)
+            window = rasterio.windows.Window(col0, row0, col1 - col0, row1 - row0)
+            src_nodata = src.nodata if nodata is None else nodata
+            data = np.full((height, width), 0 if src_nodata is None else src_nodata,
+                           dtype=dtype or src.dtypes[0])
+            if window.width > 0 and window.height > 0:
+                rasterio.warp.reproject(src.read(1, window=window), data,
+                                        src_transform=src.window_transform(window), src_crs=src.crs,
+                                        dst_transform=transform, dst_crs=src.crs,
+                                        src_nodata=src_nodata, dst_nodata=src_nodata,
+                                        resampling=resampling)
+            x, _ = transform * (np.arange(width) + 0.5, np.full(width, 0.5))
+            _, y = transform * (np.full(height, 0.5), np.arange(height) + 0.5)
+            xda = xr.DataArray(data, dims=('y', 'x'), coords=dict(x=x, y=y))
+            return xda.rio.write_crs(src.crs).rio.write_transform(transform)
         vrt_kwargs = dict(crs=src.crs, transform=transform, width=width, height=height,
                           resampling=resampling)
         if nodata is not None:
@@ -65,52 +98,70 @@ def read_on_grid(path, transform, width, height,
     return xda.squeeze('band', drop=True)
 
 
-def stack_bands(reader, bands, **kwargs):
+def stack_bands(read_band, keys, lazy=False):
     '''
-    Memory-efficient equivalent of EOReader ``stack``: the bands are loaded one
-    by one into a preallocated float32 array (bands, y, x), instead of loading
-    them all before copying them into the stack (about twice less memory).
+    Stack the bands returned by ``read_band(key)`` for each key of ``keys``
+    along a new ``bands`` dimension. Eager mode: the bands are loaded one by one
+    into a preallocated float32 array (peak memory: the stack plus one band).
 
-    EOReader ``stack`` is used as is when EOReader works with dask (lazy
-    product), with a ``window`` (the windowed bands are not on the same grid, EOReader
-    aligns them), when a stack-only argument (``stack_path``, ``save_as_int``) is given
-    or when the bands are not on the same grid.
-
-    :param reader: EOReader product
-    :param bands: names of the bands to load
-    :param kwargs: passed to ``reader.load`` (``pixel_size``, ``window``...)
-    :return: DataArray (bands, y, x) with the attributes of the product
+    :param read_band: function returning a DataArray (y, x) for a key
+    :param keys: band keys (e.g. band numbers)
+    :param lazy: concatenate the (dask-backed) bands without computing them
+    :return: DataArray (bands, y, x)
     '''
-    if use_dask() or kwargs.get('window') is not None or \
-            kwargs.get('stack_path') or kwargs.get('save_as_int'):
-        return reader.stack(bands, **kwargs)
-    kwargs.pop('stack_path', None)
-    kwargs.pop('save_as_int', None)
-
+    if lazy:
+        return xr.concat([read_band(key) for key in keys], dim='bands')
     stack = None
-    for iband, band in enumerate(bands):
-        band_xds = reader.load([band], **kwargs)
-        band_xda = next(iter(band_xds.data_vars.values())).squeeze('band', drop=True)
+    for iband, key in enumerate(keys):
+        band = read_band(key)
         if stack is None:
-            stack = xr.DataArray(np.empty((len(bands),) + band_xda.shape, dtype=np.float32),
-                                 dims=('bands',) + band_xda.dims,
-                                 coords=band_xda.coords,
-                                 attrs=band_xds.attrs)
-        # compare the coordinate values only: the spatial_ref coordinate differs between
-        # resampled and coarsened bands (EPSG code vs 0) although the grid is the same
-        elif not (np.array_equal(band_xda.x.values, stack.x.values) and
-                  np.array_equal(band_xda.y.values, stack.y.values)):
-            # bands on different grids (e.g. with a window): let EOReader align them
-            del stack, band_xds, band_xda
-            gc.collect()
-            return reader.stack(bands, **kwargs)
-        stack.values[iband] = band_xda.values
-        # EOReader temporaries are kept in reference cycles: free them before the next band
-        del band_xds, band_xda
-        gc.collect()
-    stack.attrs['long_name'] = ' '.join(bands)
-    stack.rio.write_nodata(kwargs.get('nodata', reader.nodata), encoded=True, inplace=True)
+            stack = xr.DataArray(np.empty((len(keys),) + band.shape, dtype=np.float32),
+                                 dims=('bands',) + band.dims, coords=band.coords)
+        stack.values[iband] = band.values
+        del band
     return stack
+
+
+def get_bounds(subset, crs):
+    '''
+    Bounding box ``(minx, miny, maxx, maxy)`` in ``crs`` of a spatial subset of
+    the drivers: a ``geopandas.GeoSeries`` or ``GeoDataFrame`` (any CRS), or a
+    sequence whose first element is the bounding box in ``crs``.
+
+    :param subset: spatial subset, or None
+    :param crs: CRS of the product
+    :return: bounds, or None if ``subset`` is None
+    '''
+    if subset is None:
+        return None
+    if hasattr(subset, 'to_crs'):
+        return tuple(subset.to_crs(crs).total_bounds)
+    return tuple(subset[0])
+
+
+def subset_grid(transform, width, height, bounds=None):
+    '''
+    Crop a grid to the pixels intersecting ``bounds``.
+
+    :param transform: affine transform of the full grid (north up)
+    :param width: number of columns of the full grid
+    :param height: number of rows of the full grid
+    :param bounds: ``(minx, miny, maxx, maxy)`` in the grid CRS, or None (full grid)
+    :return: (transform, width, height) of the cropped grid
+    '''
+    if bounds is None:
+        return transform, width, height
+    res_x, res_y = transform.a, -transform.e
+    x0, y0 = transform.c, transform.f
+    minx, miny, maxx, maxy = bounds
+    col0 = max(0, math.floor((minx - x0) / res_x))
+    col1 = min(width, math.ceil((maxx - x0) / res_x))
+    row0 = max(0, math.floor((y0 - maxy) / res_y))
+    row1 = min(height, math.ceil((y0 - miny) / res_y))
+    if col1 <= col0 or row1 <= row0:
+        raise ValueError('subset does not intersect the image')
+    return (Affine(res_x, 0., x0 + col0 * res_x, 0., -res_y, y0 - row0 * res_y),
+            col1 - col0, row1 - row0)
 
 
 class SpatioTemp():

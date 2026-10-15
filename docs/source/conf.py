@@ -4,7 +4,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 #
 # The API is generated with sphinx-autoapi, which parses the source code
-# statically: GRSdriver (and its heavy dependencies: GDAL, EOReader...) is never
+# statically: GRSdriver (and its heavy dependencies: GDAL...) is never
 # imported to build the docs.
 
 import os

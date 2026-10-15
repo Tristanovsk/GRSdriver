@@ -74,7 +74,6 @@ dependencies:
   - earthengine-api=0.1.389
   - ee_extra=0.0.15
   - eemont=0.3.6
-  - eoreader=0.21.0.post0
   - expat=2.5.0
   - fasteners=0.17.3
   - fiona=1.9.5
@@ -276,7 +275,6 @@ dependencies:
   - scipy=1.12.0
   - seaborn=0.13.2
   - seaborn-base=0.13.2
-  - sertit=1.35.0
   - setuptools=69.0.3
   - shapely=2.0.2
   - six=1.16.0

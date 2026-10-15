@@ -16,8 +16,10 @@ All the angles are in degrees.
 Top-of-atmosphere reflectance
 -----------------------------
 
-The digital counts are converted into top-of-atmosphere (TOA) reflectance by
-`EOReader <https://eoreader.readthedocs.io>`__ for Sentinel-2, and by GRSdriver itself for Landsat.
+The bands are read with rasterio/GDAL on the output grid: the digital counts are averaged
+when the output pixel is coarser than the native one (e.g. 10 m bands at 20 m), bilinearly
+interpolated when it is finer (e.g. 60 m bands at 20 m), pixels with :math:`DN = 0` being ignored.
+They are then converted into top-of-atmosphere (TOA) reflectance; negative values are set to 0.
 
 Sentinel-2 L1C
 ~~~~~~~~~~~~~~
