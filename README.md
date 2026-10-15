@@ -25,10 +25,11 @@ Full documentation: https://grsdriver.readthedocs.io
 pip install GRSdriver
 ```
 
-GRSdriver needs GDAL. If you have no GDAL installation yet, use a conda environment and install
-GDAL before GRSdriver:
+No separate GDAL installation is needed: rasterio and geopandas ship with their own GDAL
+(including the JPEG2000 driver for Sentinel-2). The `grs_driver` command line (RGB quicklooks)
+needs matplotlib and cartopy:
 ```commandline
-conda install -c conda-forge gdal
+pip install "GRSdriver[cli]"
 ```
 
 ### Installation from the repository (to use the notebooks and visualization tools)

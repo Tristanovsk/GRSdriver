@@ -4,8 +4,17 @@ All notable changes to GRSdriver are listed here, most recent first.
 
 ## Unreleased
 
-EOReader is no longer a dependency (nor `sertit` and their dependencies).
+EOReader is no longer a dependency (nor `sertit` and their dependencies), and the GDAL Python
+bindings (`osgeo`) are no longer used.
 
+- Sentinel-2: the main metadata (`prod.attrs`: `PRODUCT_URI`, `DATATAKE_1_DATATAKE_SENSING_START`,
+  `REFLECTANCE_CONVERSION_U`, `FOOTPRINT`...) are read from `MTD_MSIL1C.xml` with `xmltodict`
+  (`driver_S2_SAFE.flat_metadata`) instead of the GDAL SENTINEL2 driver; identical keys and
+  values for the 3429 L1C products checked (processing baselines 02.06 to 05.12).
+- Dependencies: `scipy`, `xarray` and `shapely` added to the requirements (they were only
+  installed through EOReader); `matplotlib` and `cartopy`, needed by the `grs_driver` command
+  line, in the new `cli` extra (`pip install "GRSdriver[cli]"`). GRSdriver now installs with pip
+  only (no conda GDAL needed): checked in a clean virtualenv.
 - Sentinel-2: the bands are read with rasterio/GDAL directly on the output grid and converted
   with the quantification value and `RADIO_ADD_OFFSET` of `MTD_MSIL1C.xml`; the detector
   footprints are read from the `MSK_DETFOO` jp2 (baseline >= 4.0) or GML (< 4.0) masks.

@@ -26,7 +26,6 @@ from rasterio.enums import Resampling
 from rasterio.features import rasterize
 import scipy.odr as odr
 from affine import Affine
-from osgeo import gdal
 from shapely.geometry import box
 
 from . import __package__
@@ -49,6 +48,89 @@ INFO = pd.DataFrame({'bandId': range(13),
                      'Wavelength (nm)': WAVELENGTH,
                      'Band width (nm)': BAND_WIDTH,
                      'Resolution (m)': NATIVE_RESOLUTION}).set_index('bandId').T
+
+
+def _text(value):
+    '''
+    Text of an ``xmltodict`` element (string, or dict with ``#text``), None if absent.
+    '''
+    if isinstance(value, dict):
+        return value.get('#text')
+    return value
+
+
+def _as_list(value):
+    '''
+    ``xmltodict`` elements as a list (single elements are not wrapped in a list).
+    '''
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def flat_metadata(product):
+    '''
+    Main metadata of an L1C product (``MTD_MSIL1C.xml``) as a flat dict of strings,
+    with the same keys and values as the GDAL SENTINEL2 driver (default metadata domain):
+    ``PRODUCT_URI``, ``PROCESSING_BASELINE``, ``DATATAKE_1_DATATAKE_SENSING_START``,
+    ``REFLECTANCE_CONVERSION_U``, ``CLOUD_COVERAGE_ASSESSMENT``, ``FOOTPRINT``...
+
+    :param product: ``Level-1C_User_Product`` element parsed with ``xmltodict``
+    :return: dict
+    '''
+    general_info = product['n1:General_Info']
+    md = {}
+
+    # product information, datatake(s) prefixed by DATATAKE_<n>_
+    for key, value in general_info['Product_Info'].items():
+        if key == 'Datatake':
+            for idatatake, datatake in enumerate(_as_list(value), start=1):
+                prefix = 'DATATAKE_{}_'.format(idatatake)
+                if '@datatakeIdentifier' in datatake:
+                    md[prefix + 'ID'] = datatake['@datatakeIdentifier']
+                for key_, value_ in datatake.items():
+                    if not key_.startswith('@') and isinstance(_text(value_), str):
+                        md[prefix + key_] = _text(value_)
+        elif not key.startswith('@') and isinstance(_text(value), str):
+            md[key] = _text(value)
+
+    # image characteristics
+    image_char = general_info['Product_Image_Characteristics']
+    for special in _as_list(image_char.get('Special_Values')):
+        md['SPECIAL_VALUE_' + special['SPECIAL_VALUE_TEXT']] = special['SPECIAL_VALUE_INDEX']
+    if 'QUANTIFICATION_VALUE' in image_char:
+        md['QUANTIFICATION_VALUE'] = _text(image_char['QUANTIFICATION_VALUE'])
+    u = _text(image_char.get('Reflectance_Conversion', {}).get('U'))
+    if u is not None:
+        md['REFLECTANCE_CONVERSION_U'] = u
+    if 'REFERENCE_BAND' in image_char:
+        # band index -> band name without leading 0 (e.g. 3 -> B4)
+        md['REFERENCE_BAND'] = 'B' + BAND_ID[int(_text(image_char['REFERENCE_BAND']))].lstrip('0')
+
+    # footprint: "lat lon lat lon..." -> WKT polygon (lon lat)
+    try:
+        pos = product['n1:Geometric_Info']['Product_Footprint']['Product_Footprint'][
+            'Global_Footprint']['EXT_POS_LIST'].split()
+        md['FOOTPRINT'] = 'POLYGON((' + ', '.join(
+            pos[i + 1] + ' ' + pos[i] for i in range(0, len(pos) - 1, 2)) + '))'
+    except (KeyError, TypeError, AttributeError):
+        pass
+
+    # quality indicators
+    quality = product.get('n1:Quality_Indicators_Info', {})
+    if 'Cloud_Coverage_Assessment' in quality:
+        md['CLOUD_COVERAGE_ASSESSMENT'] = _text(quality['Cloud_Coverage_Assessment'])
+    for key, value in (quality.get('Technical_Quality_Assessment') or {}).items():
+        if isinstance(_text(value), str):
+            md[key] = _text(value)
+    inspections = (quality.get('Quality_Control_Checks') or {}).get('Quality_Inspections') or {}
+    for key, value in inspections.items():
+        if key == 'quality_check':
+            for check in _as_list(value):
+                md[check['@checkType']] = check['#text']
+        elif isinstance(_text(value), str):
+            md[key] = _text(value)
+    return md
 
 
 def _take_yx(iy, ix, src):
@@ -169,10 +251,10 @@ class Sentinel2Driver():
             self.xml_granule = glob.glob(opj(imageSAFE, 'GRANULE', '*', '*MTD*.xml'))[0]
             self.xml_file = glob.glob(opj(imageSAFE, '*MTD*.xml'))[0]
 
-        # get metadata and angle file
-        ds = gdal.Open(self.xml_file)
-        self.metadata = ds.GetMetadata()
-        self.metadata2 = xmltodict.parse(ds.GetMetadata('xml:SENTINEL2')[0])
+        # get metadata: full XML (metadata2) and main items as a flat dict (metadata)
+        with open(self.xml_file) as f:
+            self.metadata2 = xmltodict.parse(f.read())
+        self.metadata = flat_metadata(self.metadata2['n1:Level-1C_User_Product'])
         __ = []
         for _ in self.metadata2['n1:Level-1C_User_Product']['n1:General_Info']['Product_Image_Characteristics'][
             'Reflectance_Conversion']['Solar_Irradiance_List']['SOLAR_IRRADIANCE']:

@@ -7,10 +7,13 @@ rasterio
 netCDF4
 numba
 numpy
+scipy
 pandas>=2.0.3
 pyproj
 pystac
 rioxarray>=0.15.0
+xarray
+shapely
 geopandas
 fiona
 pyyaml

@@ -98,3 +98,22 @@ def test_list_subset_and_dask(monkeypatch):
     l1c.load_bands(subset=l1c.subset)
     assert l1c.prod.bands.chunks is not None
     np.testing.assert_allclose(l1c.prod.bands.values, eager.values, rtol=1e-6)
+
+
+@pytest.mark.parametrize('key', ['pb4', 'pb2'])
+def test_flat_metadata(key):
+    '''Main metadata identical to the GDAL SENTINEL2 driver (compared only if GDAL is installed).'''
+    import xmltodict
+    from GRSdriver.driver_S2_SAFE import flat_metadata
+    image, _ = _product(key)
+    xml_file = os.path.join(image, 'MTD_MSIL1C.xml')
+    with open(xml_file) as f:
+        md = flat_metadata(xmltodict.parse(f.read())['n1:Level-1C_User_Product'])
+    # items used by the driver and by GRS
+    assert md['PRODUCT_URI'] == os.path.basename(image)
+    assert md['DATATAKE_1_DATATAKE_SENSING_START'].startswith(md['PRODUCT_START_TIME'][:10])
+    assert 0.9 < float(md['REFLECTANCE_CONVERSION_U']) < 1.1
+    assert md['FOOTPRINT'].startswith('POLYGON((')
+    gdal = pytest.importorskip('osgeo.gdal')
+    gdal.UseExceptions()
+    assert md == gdal.Open(xml_file).GetMetadata()

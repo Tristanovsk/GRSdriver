@@ -13,11 +13,13 @@ for notes on how to deploy the project on a live system.
     pip install GRSdriver
 
 
-If you have no GDAL implementation yet, please use a conda environment and install GDAL before GRSdriver:
+No separate GDAL installation is needed: rasterio and geopandas ship with their own GDAL
+(including the JPEG2000 driver for Sentinel-2). The ``grs_driver`` command line (RGB quicklooks)
+needs matplotlib and cartopy:
 
 .. code-block:: bash
 
-    conda install -c conda-forge gdal
+    pip install "GRSdriver[cli]"
 
 
 Installation from GRSdriver repository (enables use of the notebook and visualization tools)
@@ -29,18 +31,11 @@ Installation from GRSdriver repository (enables use of the notebook and visualiz
     git clone https://github.com/Tristanovsk/GRSdriver.git
 
 
-2.a. You may duplicate the conda environment (optional)
+2. You may duplicate the conda environment (optional)
 
 .. code-block:: bash
 
     conda env create -f environment.yml
-
-
-2.b. If you do not duplicate the environment please install GDAL with conda
-
-.. code-block:: bash
-
-    conda install -c conda-forge gdal
 
 
 3. Install GRSdriver

@@ -63,12 +63,12 @@ def read_on_grid(path, transform, width, height,
     '''
     with rasterio.open(path) as src:
         if chunks is None:
-            # source window covering the target grid, with a margin for the resampling kernel
-            minx, maxy = transform * (0, 0)
-            maxx, miny = transform * (width, height)
-            inv = ~src.transform
-            col0, row0 = inv * (minx, maxy)
-            col1, row1 = inv * (maxx, miny)
+            # source window covering the target grid (north up), with a margin for the
+            # resampling kernel
+            minx, maxx = transform.c, transform.c + transform.a * width
+            maxy, miny = transform.f, transform.f + transform.e * height
+            col0, col1 = [(x - src.transform.c) / src.transform.a for x in (minx, maxx)]
+            row0, row1 = [(y - src.transform.f) / src.transform.e for y in (maxy, miny)]
             col0, row0 = max(0, math.floor(col0) - 2), max(0, math.floor(row0) - 2)
             col1, row1 = min(src.width, math.ceil(col1) + 2), min(src.height, math.ceil(row1) + 2)
             window = rasterio.windows.Window(col0, row0, col1 - col0, row1 - row0)
@@ -81,8 +81,9 @@ def read_on_grid(path, transform, width, height,
                                         dst_transform=transform, dst_crs=src.crs,
                                         src_nodata=src_nodata, dst_nodata=src_nodata,
                                         resampling=resampling)
-            x, _ = transform * (np.arange(width) + 0.5, np.full(width, 0.5))
-            _, y = transform * (np.full(height, 0.5), np.arange(height) + 0.5)
+            # pixel centers
+            x = transform.c + transform.a * (np.arange(width) + 0.5)
+            y = transform.f + transform.e * (np.arange(height) + 0.5)
             xda = xr.DataArray(data, dims=('y', 'x'), coords=dict(x=x, y=y))
             return xda.rio.write_crs(src.crs).rio.write_transform(transform)
         vrt_kwargs = dict(crs=src.crs, transform=transform, width=width, height=height,
