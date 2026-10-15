@@ -16,8 +16,8 @@ All the angles are in degrees.
 Top-of-atmosphere reflectance
 -----------------------------
 
-The bands are read with `EOReader <https://eoreader.readthedocs.io>`__, which converts the
-digital counts into top-of-atmosphere (TOA) reflectance.
+The digital counts are converted into top-of-atmosphere (TOA) reflectance by
+`EOReader <https://eoreader.readthedocs.io>`__ for Sentinel-2, and by GRSdriver itself for Landsat.
 
 Sentinel-2 L1C
 ~~~~~~~~~~~~~~
@@ -41,6 +41,11 @@ vis-NIR-SWIR bands (:math:`\lambda \leq 3000` nm):
 .. math::
 
     \rho_b(x, y) = \frac{M_{\rho, b}\, Q_{cal, b}(x, y) + A_{\rho, b}}{\cos \theta_s(x, y)}
+
+Fill pixels (``QA_PIXEL`` = 1 or :math:`Q_{cal}` = 0) are set to NaN and negative values to 0.
+When the output pixel size differs from the native one, :math:`Q_{cal}` is averaged (coarser
+output, e.g. PAN at 30 m) or bilinearly interpolated (finer output) by GDAL before the
+rescaling; ``QA_PIXEL`` is resampled with nearest neighbour.
 
 The thermal bands (TIR_1, TIR_2) are given as brightness temperature (K), from the
 TOA radiance :math:`L_b` and the thermal constants :math:`K_{1,b}, K_{2,b}` of the metadata:

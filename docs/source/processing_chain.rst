@@ -28,7 +28,9 @@ GRSdriver is mainly a Python library. It has two entry points:
 - the ``grs_driver`` command-line executable (entry point ``GRSdriver.run:main``, see
   :py:mod:`GRSdriver.run`), which writes an RGB quicklook (PNG) of a product.
 
-The bands are read with `EOReader <https://eoreader.readthedocs.io>`_.
+The Sentinel-2 bands are read with `EOReader <https://eoreader.readthedocs.io>`_. The Landsat
+bands are read directly with rasterio/GDAL (warped VRT on the output grid) and calibrated with the
+coefficients of the ``*_MTL.xml`` metadata file.
 
 Application Domain (Granule)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -75,7 +77,8 @@ Inputs
    * - Spatial subset (``subset``)
      - 0..1 (optional)
      - ``geopandas.GeoSeries`` in any CRS (its bounding box is used), or a sequence whose first
-       element is passed as ``window`` to EOReader. Python API only.
+       element is passed as ``window`` to EOReader (Sentinel-2) or is the bounding box
+       ``(minx, miny, maxx, maxy)`` in the product CRS (Landsat). Python API only.
 
 Outputs
 -------
@@ -97,8 +100,8 @@ Outputs
      - 0..1
      - Written by the ``grs_driver`` command line only, at ``<odir>/<ofile>``.
    * - EOReader temporary files
-     - 1..1
-     - Cleaned bands cached as GeoTIFF by EOReader in a temporary directory. The directory is
+     - 0..1
+     - Sentinel-2 only. Cleaned bands cached as GeoTIFF by EOReader in a temporary directory. The directory is
        removed when the program exits (``remove_tmp=True``).
 
 Output product format

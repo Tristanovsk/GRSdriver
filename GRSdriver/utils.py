@@ -1,6 +1,7 @@
 
 
 import gc
+import os
 
 import numpy as np
 import pandas as pd
@@ -8,10 +9,60 @@ import xarray as xr
 import rioxarray  # noqa: F401 (rio accessor)
 
 import pyproj
+import rasterio
 from rasterio import features
+from rasterio.enums import Resampling
+from rasterio.vrt import WarpedVRT
 from affine import Affine
 import geopandas as gpd
-from eoreader.utils import use_dask
+
+# environment variable switching the drivers to lazy (dask-backed) loading;
+# same name as in EOReader so that a single variable drives both
+USE_DASK = 'EOREADER_USE_DASK'
+
+
+def use_dask():
+    '''
+    True when lazy (dask-backed) loading is requested, i.e. when the environment
+    variable ``EOREADER_USE_DASK`` is set to ``1`` or ``true`` (default: ``0``).
+    '''
+    return os.getenv(USE_DASK, '0').lower() in ('1', 'true')
+
+
+def read_on_grid(path, transform, width, height,
+                 resampling=Resampling.nearest,
+                 nodata=None,
+                 dtype=None,
+                 chunks=None):
+    '''
+    Read the first band of a raster on a target grid (same CRS), through a
+    GDAL warped VRT: only the pixels needed for the target grid are read, and
+    the resampling (if any) is done by GDAL.
+
+    :param path: path of the raster file
+    :param transform: affine transform of the target grid
+    :param width: number of columns of the target grid
+    :param height: number of rows of the target grid
+    :param resampling: ``rasterio.enums.Resampling`` method
+    :param nodata: no-data value of the source (pixels ignored when resampling,
+        and fill value outside the source); by default the one of the file
+    :param dtype: data type in which the resampling is computed (e.g. ``float32``
+        to avoid rounding averaged integers); by default the one of the file
+    :param chunks: dask chunks (lazy reading), ``None`` to load into memory
+    :return: DataArray (y, x), with the ``rio`` georeferencing
+    '''
+    with rasterio.open(path) as src:
+        vrt_kwargs = dict(crs=src.crs, transform=transform, width=width, height=height,
+                          resampling=resampling)
+        if nodata is not None:
+            vrt_kwargs.update(src_nodata=nodata, nodata=nodata)
+        if dtype is not None:
+            vrt_kwargs.update(dtype=dtype)
+        with WarpedVRT(src, **vrt_kwargs) as vrt:
+            xda = rioxarray.open_rasterio(vrt, chunks=chunks)
+            if chunks is None:
+                xda = xda.load()
+    return xda.squeeze('band', drop=True)
 
 
 def stack_bands(reader, bands, **kwargs):

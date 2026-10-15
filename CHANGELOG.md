@@ -2,6 +2,21 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## Unreleased
+
+- Landsat: the driver no longer uses EOReader. The bands are read with rasterio/GDAL (warped VRT
+  on the output grid, only the needed pixels are read) and converted with the coefficients of the
+  `*_MTL.xml` file. Results are identical to the EOReader version at 30 m, except:
+  - PAN: the 15 m grid (shifted by 7.5 m) is now correctly averaged onto the 30 m grid;
+  - other resolutions: the output pixel size is exact (e.g. 100 m instead of 100.013 m), the bands
+    are averaged without the fill pixels, and `flags_l1` is resampled with nearest neighbour
+    (it was averaged by EOReader for integer factors).
+- Landsat: `prod.attrs['tile']` (WRS path/row, e.g. `196030`) added, as required by GRS to find
+  the CAMS files; `orbit_direction` and `product_filename` attributes removed.
+- Landsat: `LandsatDriver` no longer accepts `**kwargs` (they were passed to EOReader), `subset`
+  given as a sequence takes a bounding box in the product CRS, the `reader` attribute is removed.
+- `utils.read_on_grid`: read a raster on a target grid through a GDAL warped VRT.
+
 ## v1.1.1 (2026-10-14)
 
 - `grs_driver` command line: Sentinel-2 products are now supported (driver chosen from the product
