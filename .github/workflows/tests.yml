@@ -1,0 +1,42 @@
+# Tests and package checks on each push and pull request.
+# The tests that need satellite products are skipped (products not available on GitHub).
+name: tests
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # oldest supported (requires-python) and recent versions
+        python-version: ["3.9", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: pip install . pytest
+      - name: Tests
+        # run from tests/ to test the installed package, not the source directory
+        working-directory: tests
+        run: python -I -m pytest -rs
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and check the distributions
+        run: |
+          pip install build twine
+          python -m build
+          twine check --strict dist/*

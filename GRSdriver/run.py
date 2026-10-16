@@ -30,8 +30,6 @@ import logging
 from GRSdriver import __package__, __version__
 import GRSdriver
 
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
 from GRSdriver.utils import USE_DASK
 # lazy (dask-backed) loading
 os.environ[USE_DASK] = "1"
@@ -40,6 +38,13 @@ def main():
 
     args = docopt(__doc__, version=__package__ + '_' + __version__)
     print(args)
+
+    # optional dependencies (extra 'cli'), imported after the parsing so that --help works without them
+    try:
+        import matplotlib.pyplot as plt
+        import cartopy.crs as ccrs
+    except ImportError as exc:
+        sys.exit(f'grs_driver needs matplotlib and cartopy ({exc}): pip install "GRSdriver[cli]"')
 
     file = args['<input_file>']
 

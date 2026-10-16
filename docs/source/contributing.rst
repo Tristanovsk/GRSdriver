@@ -172,16 +172,39 @@ Publish
 
       git push origin master develop --tags
 
-2. Upload to PyPI with an `API token <https://pypi.org/manage/account/token/>`_ (user name
-   ``__token__``, the token as password, or stored in ``~/.pypirc``):
+2. Upload to PyPI. Once the trusted publisher is set up (see below), pushing the tag is enough:
+   the ``publish`` GitHub workflow checks that the tag equals ``__version__``, builds and uploads the
+   distributions. Otherwise, upload them yourself with an
+   `API token <https://pypi.org/manage/account/token/>`_ (user name ``__token__``, the token as
+   password, or stored in ``~/.pypirc``):
 
    .. code-block:: shell
 
       twine upload dist/*
 
-   A version cannot be uploaded twice: to try the upload first, use
-   `TestPyPI <https://test.pypi.org>`_ (``twine upload --repository testpypi dist/*``, separate account
-   and token).
+   A version cannot be uploaded twice: use one of the two ways, not both. To try the upload first,
+   use `TestPyPI <https://test.pypi.org>`_ (``twine upload --repository testpypi dist/*``, separate
+   account and token).
 3. Check ``pip install --upgrade GRSdriver`` and the project page; Read the Docs builds the
    documentation of ``master`` automatically. Optionally, create a GitHub release from the tag
    with the CHANGELOG section as notes.
+
+Continuous integration
+----------------------
+
+Two GitHub Actions workflows are in ``.github/workflows``:
+
+- ``tests.yml``, on each push to ``master`` or ``develop`` and on pull requests: installs the package
+  with Python 3.9 (oldest supported), 3.12 and 3.13 and runs the tests (those that need satellite
+  products are skipped), then builds the distributions and runs ``twine check``;
+- ``publish.yml``, on a version tag (e.g. ``2.0.2``): builds and uploads to PyPI.
+
+The upload uses `trusted publishing <https://docs.pypi.org/trusted-publishers/>`_, without any token
+stored on GitHub. One-time setup:
+
+1. on PyPI, *Your projects* > GRSdriver > *Publishing* > *Add a new publisher* > GitHub: owner
+   ``Tristanovsk``, repository ``GRSdriver``, workflow ``publish.yml``, environment ``pypi``;
+2. on GitHub, *Settings* > *Environments* > *New environment* ``pypi`` (optionally with yourself as
+   required reviewer, to approve each upload).
+
+Pushing workflow files over HTTPS needs a token with the ``workflow`` scope.

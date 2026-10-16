@@ -2,6 +2,15 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## Unreleased
+
+- Continuous integration (GitHub Actions): tests with Python 3.9, 3.12 and 3.13 and package checks
+  on each push; upload to PyPI on version tags (trusted publishing). New tests of the installed
+  package (version, Landsat spectral responses, command line).
+- `grs_driver` command line: `--help` and `--version` work without the optional matplotlib and
+  cartopy, and a clear message tells to install `GRSdriver[cli]` when they are missing.
+- `licences.txt` (outdated list of the licences of a development environment) removed.
+
 ## v2.0.1 (2026-10-16)
 
 - Performance: the bands are read by `n_workers` threads in parallel (new parameter of both

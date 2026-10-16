@@ -1,0 +1,43 @@
+# Publish to PyPI when a version tag (e.g. 2.0.2) is pushed.
+# Needs a trusted publisher on PyPI (one-time setup, see docs/source/contributing.rst):
+# project GRSdriver, owner Tristanovsk, repository GRSdriver, workflow publish.yml, environment pypi.
+name: publish
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check that the tag is the package version
+        run: |
+          version=$(sed -n "s/^__version__ *= *['\"]\(.*\)['\"]/\1/p" GRSdriver/__init__.py)
+          test "$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != __version__ $version"; exit 1; }
+      - name: Build
+        run: |
+          pip install build twine
+          python -m build
+          twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # trusted publishing, no token stored on GitHub
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
