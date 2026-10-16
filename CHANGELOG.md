@@ -2,7 +2,7 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
-## Unreleased
+## v2.0.2 (2026-10-16)
 
 - Continuous integration (GitHub Actions): tests with Python 3.9, 3.12 and 3.13 and package checks
   on each push; upload to PyPI on version tags (trusted publishing). New tests of the installed
