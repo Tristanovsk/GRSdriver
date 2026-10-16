@@ -79,7 +79,12 @@ equations.
 # from the product metadata, ~2x faster for Sentinel-2; Sentinel-2 baseline < 4.0
 # angles fixed; least-squares plane fit of the viewing angles (scipy.odr deprecated);
 # API: no ``**kwargs``, no ``.reader``, ``GRSDRIVER_USE_DASK``
-__version__='2.0.0'
+#
+# v2.0.1 (2026-10-16):
+# parallel band reading (``n_workers``) and Sentinel-2 angles, ~2x faster; really lazy
+# and ~7x faster dask mode; SpatioTemp.wktbox and clip_raster boxes of the documented size;
+# API documentation
+__version__='2.0.1'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver

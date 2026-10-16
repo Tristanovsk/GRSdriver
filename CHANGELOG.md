@@ -2,7 +2,7 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
-## Unreleased
+## v2.0.1 (2026-10-16)
 
 - Performance: the bands are read by `n_workers` threads in parallel (new parameter of both
   drivers, default 4; `n_workers=1` for the previous memory use), and the viewing angles of the
@@ -14,7 +14,8 @@ All notable changes to GRSdriver are listed here, most recent first.
   ~145 s. `utils.read_on_grid` no longer uses a warped VRT.
 - `SpatioTemp.wktbox`: the box is now `width` x `height` m as documented; it was twice as large
   in each direction (the corners were placed at the full diagonal from the center). Code relying
-  on the old size (e.g. grstbx `subset.py`) gets regions 2 x smaller in each direction.
+  on the old size gets regions 2 x smaller in each direction (grstbx has its own `SpatioTemp`,
+  not affected).
 - `SpatioTemp.clip_raster`: the clipped square has sides of `extent_m` as documented (it was
   1.41 x larger).
 - API documentation: package overview, documented module constants (band tables), main

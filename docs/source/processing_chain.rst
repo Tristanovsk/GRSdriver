@@ -167,7 +167,7 @@ Required Resources
 -------------------
 
 Measured for one full Sentinel-2 tile (T22JEM, 13 bands, ``resolution=20``,
-``resolution_angle=60``, numpy mode, ``n_workers=4``, development version after GRSdriver 2.0.0) on a shared 40-core node.
+``resolution_angle=60``, numpy mode, ``n_workers=4``, GRSdriver 2.0.1) on a shared 40-core node.
 The resources scale with the number of pixels: about 4 x more at 10 m, about 9 x less at 60 m.
 
 .. list-table::
