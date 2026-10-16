@@ -37,7 +37,6 @@ os.environ[USE_DASK] = "1"
 def main():
 
     args = docopt(__doc__, version=__package__ + '_' + __version__)
-    print(args)
 
     # optional dependencies (extra 'cli'), imported after the parsing so that --help works without them
     try:

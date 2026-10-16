@@ -4,7 +4,10 @@
 ## Driver dedicated to load and prepare data for the GRS processor
 
 [![PyPI](https://img.shields.io/pypi/v/GRSdriver)](https://pypi.org/project/GRSdriver/)
+[![Python](https://img.shields.io/pypi/pyversions/GRSdriver)](https://pypi.org/project/GRSdriver/)
+[![tests](https://github.com/Tristanovsk/GRSdriver/actions/workflows/tests.yml/badge.svg)](https://github.com/Tristanovsk/GRSdriver/actions/workflows/tests.yml)
 [![Documentation](https://readthedocs.org/projects/grsdriver/badge/?version=latest)](https://grsdriver.readthedocs.io)
+[![License](https://img.shields.io/pypi/l/GRSdriver)](https://github.com/Tristanovsk/GRSdriver/blob/master/LICENSE)
 
 GRSdriver loads a Level-1 satellite image into a single `xarray.Dataset` ready for the
 [GRS](https://github.com/CNES/GRSprocessor) atmospheric and sunglint correction:
@@ -14,37 +17,49 @@ GRSdriver loads a Level-1 satellite image into a single `xarray.Dataset` ready f
 - Landsat 8 and 9 Collection-2 L1: reflectance, brightness temperature of the thermal bands,
   sun/viewing angles and L1 quality flags
 - spectral response functions and central wavelengths of each band
-- spatial subsetting, lazy (dask) loading and low memory options for full tiles
+- spatial subsetting, parallel reading, lazy (dask) loading and low memory options for full tiles
 - visualization tools
 
 Full documentation: https://grsdriver.readthedocs.io
 
+## What's new in 2.0
+
+- **pip-only install**: EOReader and the GDAL Python bindings are no longer needed.
+- **~2x faster**: full Sentinel-2 tile at 20 m in ~30 s (bands read and angles computed in
+  parallel), fully lazy dask mode in ~20 s.
+- **Fixes**: Sentinel-2 angles of processing baselines < 4.0, alignment of the Landsat
+  panchromatic band, size of the `SpatioTemp` boxes.
+- **Upgrading from 1.x**: the drivers no longer take `**kwargs` (they were passed to EOReader) and
+  have no `.reader` attribute; a `subset` given as a sequence is a bounding box
+  `(minx, miny, maxx, maxy)` in the product CRS. See the
+  [CHANGELOG](https://github.com/Tristanovsk/GRSdriver/blob/master/CHANGELOG.md).
+
 ## Installation
+
+Python 3.9 to 3.13:
 
 ```commandline
 pip install GRSdriver
 ```
 
 No separate GDAL installation is needed: rasterio and geopandas ship with their own GDAL
-(including the JPEG2000 driver for Sentinel-2). The `grs_driver` command line (RGB quicklooks)
-needs matplotlib and cartopy:
-```commandline
-pip install "GRSdriver[cli]"
-```
+(including the JPEG2000 driver for Sentinel-2). Optional extras:
 
-### Installation from the repository (to use the notebooks and visualization tools)
+| Extra | For | Install |
+|---|---|---|
+| `cli` | `grs_driver` command line (RGB quicklooks) | `pip install "GRSdriver[cli]"` |
+| `viz` | interactive visualization tools (`GRSdriver.visual`) | `pip install "GRSdriver[viz]"` |
+| `tutorials` | running the tutorial notebooks | `pip install "GRSdriver[tutorials]"` |
+
+### From the repository
+
+To run the tutorials or work on the code:
 ```commandline
 git clone https://github.com/Tristanovsk/GRSdriver.git
 cd GRSdriver
-conda env create -f environment.yml
-conda activate grs
-pip install -e .
+pip install -e ".[cli,viz,tutorials,dev]"
 ```
-
-For the interactive visualization tools and the notebooks:
-```commandline
-conda install -c conda-forge jupyterlab holoviews panel datashader cartopy
-```
+or with conda: `conda env create -f environment.yml && conda activate grsdriver`.
 
 ## Quick start
 
@@ -59,6 +74,12 @@ prod = l1c.prod          # bands, vza, raa, sza, SRF, wl_true + metadata
 # Landsat 8/9
 l1 = LandsatDriver('LC09_L1TP_..._02_T1', resolution=30)
 l1.load_product()
+
+# region of interest: any geometry (GeoSeries, any CRS), here a lon/lat box
+import geopandas as gpd
+from shapely.geometry import box
+roi = gpd.GeoSeries([box(5.0, 43.38, 5.25, 43.58)], crs=4326)
+l1c = Sentinel2Driver('S2B_MSIL1C_..._.SAFE', resolution=20, subset=roi)
 ```
 
 The bands are read by 4 threads in parallel: set `n_workers` (e.g. `n_workers=1`) to trade speed
@@ -129,6 +150,9 @@ Viewing azimuth of each band computed by GRSdriver:
 
 ![example files](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/example_ndwi_mask.png)
 
-## Changes
+## Changes and contributing
 
-See [CHANGELOG.md](https://github.com/Tristanovsk/GRSdriver/blob/master/CHANGELOG.md).
+See the [CHANGELOG](https://github.com/Tristanovsk/GRSdriver/blob/master/CHANGELOG.md). Tests run
+with `pytest tests` (the tests that need satellite products are skipped when they are not
+available); the [contributing guide](https://grsdriver.readthedocs.io/en/latest/contributing.html)
+explains how to update the tutorials and make a release.

@@ -46,9 +46,14 @@ version = { attr = "GRSdriver.__version__" }
 dependencies = { file = ["requirements.txt"] }
 
 [project.optional-dependencies]
-dev = ["black", "bumpver", "isort", "pip-tools", "pytest"]
+# tests and release (see the contributing guide)
+dev = ["pytest", "build", "twine"]
 # grs_driver command line (RGB quicklook)
 cli = ["matplotlib", "cartopy"]
+# interactive visualization tools (GRSdriver.visual)
+viz = ["matplotlib", "holoviews", "datashader", "bokeh", "colorcet", "panel"]
+# to run the tutorial notebooks
+tutorials = ["jupyterlab", "matplotlib", "cartopy", "requests"]
 
 [project.urls]
 Documentation = "https://grsdriver.readthedocs.io"

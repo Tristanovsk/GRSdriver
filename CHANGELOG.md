@@ -2,6 +2,17 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## v2.0.3 (2026-10-16)
+
+- README: what's new in 2.0 and how to upgrade from 1.x, Python versions, optional extras,
+  subset example, badges (Python versions, tests, license).
+- New optional extras: `viz` (holoviews, datashader, bokeh, colorcet, panel for
+  `GRSdriver.visual`) and `tutorials` (jupyterlab, cartopy, requests); `dev` now holds the test
+  and release tools (pytest, build, twine).
+- `environment.yml`: minimal conda environment installing the repository with pip (the former
+  one was a full 2024 export with `geopandas` 0.14, incompatible with GRSdriver 2.0).
+- `grs_driver`: the parsed arguments are no longer printed.
+
 ## v2.0.2 (2026-10-16)
 
 - Continuous integration (GitHub Actions): tests with Python 3.9, 3.12 and 3.13 and package checks

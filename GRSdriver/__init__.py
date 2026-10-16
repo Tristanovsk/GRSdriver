@@ -88,7 +88,10 @@ equations.
 # v2.0.2 (2026-10-16):
 # continuous integration (tests with Python 3.9 to 3.13, PyPI publishing on tags);
 # grs_driver --help without matplotlib/cartopy
-__version__='2.0.2'
+#
+# v2.0.3 (2026-10-16):
+# README for 2.0, optional extras viz and tutorials, minimal environment.yml
+__version__='2.0.3'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver

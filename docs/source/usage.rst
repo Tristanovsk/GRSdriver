@@ -4,63 +4,36 @@ Usage
 Installation
 ------------
 
-These instructions will get you a copy of the project up and running on
-your local machine for development and testing purposes. See deployment
-for notes on how to deploy the project on a live system.
+GRSdriver needs Python 3.9 to 3.13:
 
 .. code-block:: bash
 
     pip install GRSdriver
 
-
 No separate GDAL installation is needed: rasterio and geopandas ship with their own GDAL
-(including the JPEG2000 driver for Sentinel-2). The ``grs_driver`` command line (RGB quicklooks)
-needs matplotlib and cartopy:
+(including the JPEG2000 driver for Sentinel-2). Optional extras:
 
-.. code-block:: bash
+- ``cli``: the ``grs_driver`` command line (RGB quicklooks): ``pip install "GRSdriver[cli]"``
+- ``viz``: the interactive visualization tools (``GRSdriver.visual``): ``pip install "GRSdriver[viz]"``
+- ``tutorials``: to run the tutorial notebooks: ``pip install "GRSdriver[tutorials]"``
 
-    pip install "GRSdriver[cli]"
+Installation from the repository
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-Installation from GRSdriver repository (enables use of the notebook and visualization tools)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-1. First clone the repository:
+To run the tutorials or work on the code:
 
 .. code-block:: bash
 
     git clone https://github.com/Tristanovsk/GRSdriver.git
+    cd GRSdriver
+    pip install -e ".[cli,viz,tutorials,dev]"
 
-
-2. You may duplicate the conda environment (optional)
+or with conda:
 
 .. code-block:: bash
 
     conda env create -f environment.yml
-
-
-3. Install GRSdriver
-
-.. code-block:: bash
-
-    conda activate grssuite
-
-    conda install -c pyviz holoviews panel
-
-    pip install .
-
-
-4. Install and configure JupyterLab and Holoviews
-
-.. code-block:: bash
-
-    pip install holoviews datashader cartopy
-
-    conda install -c conda-forge jupyterlab
-
-
-
-
-You are done.
+    conda activate grsdriver
 
 
 Quick start
