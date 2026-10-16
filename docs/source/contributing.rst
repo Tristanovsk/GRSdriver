@@ -121,3 +121,67 @@ the steps above.
 
 Interactive widgets (holoviews, panel) need a running Python kernel: they are not displayed in the
 static documentation, keep them out of the tutorials.
+
+Releasing a new version
+=======================
+
+GRSdriver is published on `PyPI <https://pypi.org/project/GRSdriver/>`_ as a source archive and a
+pure-Python wheel; the version is read from ``__version__`` in ``GRSdriver/__init__.py``.
+
+Prepare the release
+-------------------
+
+1. On ``develop``, set ``__version__`` (``X.Y.Z``) and add a line to the history comments of
+   ``GRSdriver/__init__.py``; rename the ``Unreleased`` section of ``CHANGELOG.md`` to
+   ``vX.Y.Z (YYYY-MM-DD)``.
+2. Run the tests (``pytest tests``; they need the Sentinel-2 and Landsat test products, see the
+   header of each test file) and, if the code of a tutorial changed, rerun it (see above).
+3. Commit, bring ``master`` up to ``develop`` and tag:
+
+   .. code-block:: shell
+
+      git commit -am "vX.Y.Z"
+      git fetch . develop:master        # fast-forward master without leaving develop
+      git tag -a X.Y.Z -m "vX.Y.Z"
+
+Build and check
+---------------
+
+With ``build`` and ``twine`` (``pip install build twine``), in an empty output directory:
+
+.. code-block:: shell
+
+   rm -rf dist build
+   python -m build                      # dist/grsdriver-X.Y.Z.tar.gz and -py3-none-any.whl
+   twine check dist/*                   # metadata and README rendering on PyPI
+
+Check the wheel in a fresh environment (no GDAL installation needed):
+
+.. code-block:: shell
+
+   python -m venv /tmp/venv_grsdriver
+   /tmp/venv_grsdriver/bin/pip install dist/grsdriver-X.Y.Z-py3-none-any.whl pytest
+   cd tests && /tmp/venv_grsdriver/bin/python -I -m pytest -q   # -I: test the installed package
+
+Publish
+-------
+
+1. Push the branches and the tag:
+
+   .. code-block:: shell
+
+      git push origin master develop --tags
+
+2. Upload to PyPI with an `API token <https://pypi.org/manage/account/token/>`_ (user name
+   ``__token__``, the token as password, or stored in ``~/.pypirc``):
+
+   .. code-block:: shell
+
+      twine upload dist/*
+
+   A version cannot be uploaded twice: to try the upload first, use
+   `TestPyPI <https://test.pypi.org>`_ (``twine upload --repository testpypi dist/*``, separate account
+   and token).
+3. Check ``pip install --upgrade GRSdriver`` and the project page; Read the Docs builds the
+   documentation of ``master`` automatically. Optionally, create a GitHub release from the tag
+   with the CHANGELOG section as notes.

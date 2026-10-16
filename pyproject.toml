@@ -1,6 +1,6 @@
 # pyproject.toml
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
+requires = ["setuptools>=77.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,11 +8,15 @@ name = "GRSdriver"
 description = "Driver for L1C satellite images dedicated to GRS processor"
 readme = "README.md"
 authors = [{ name = "Tristan Harmel", email = "tristan.harmel@gmail.com" }]
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 classifiers = [
-    "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
 keywords = ["Sentinel-2", "Landsat-8", "Landsat-9", "driver", "EO satellite"]
 requires-python = ">=3.9"
@@ -49,4 +53,5 @@ cli = ["matplotlib", "cartopy"]
 [project.urls]
 Documentation = "https://grsdriver.readthedocs.io"
 Homepage = "https://github.com/Tristanovsk/GRSdriver"
+Changelog = "https://github.com/Tristanovsk/GRSdriver/blob/master/CHANGELOG.md"
 

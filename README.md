@@ -1,4 +1,4 @@
-<img src="docs/source/_static/GRS_driver.png" alt="GRSdriver_icon" width="100"/>
+<img src="https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/GRS_driver.png" alt="GRSdriver_icon" width="100"/>
 
 # GRSdriver package
 ## Driver dedicated to load and prepare data for the GRS processor
@@ -75,7 +75,7 @@ grs_driver S2B_MSIL1C_..._.SAFE --odir ./quicklooks --resolution 60
 
 ## Tutorials
 
-The notebooks are in [`notebook/`](notebook) and rendered with their outputs in the
+The notebooks are in [`docs/source/tutorials/`](https://github.com/Tristanovsk/GRSdriver/tree/master/docs/source/tutorials) and rendered with their outputs in the
 [documentation](https://grsdriver.readthedocs.io):
 
 | Notebook | Content |
@@ -98,7 +98,7 @@ its own viewing angles, with jumps at the detector borders. GRSdriver computes t
 per detector from the L1C metadata (see
 [Methods](https://grsdriver.readthedocs.io/en/latest/methods.html)).
 
-![RGB image](docs/source/_static/s2_rgb.png)
+![RGB image](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/s2_rgb.png)
 
 Over water, sunglint is so directional that its reflectance changes abruptly at the detector
 borders: here +23 % in B11 (1610 nm) between detectors 10 and 11 (right: viewing azimuth). These
@@ -107,28 +107,28 @@ roughness, i.e. on the wind speed
 ([Fougnie et al., 2016](https://doi.org/10.1117/12.2237597);
 [Harmel et al., 2018](https://doi.org/10.1016/j.rse.2017.10.022)):
 
-![sunglint at detector borders](docs/source/_static/s2_sunglint_detectors.png)
+![sunglint at detector borders](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/s2_sunglint_detectors.png)
 
 Viewing azimuth of each band computed by GRSdriver:
 
-![viewing azimuth per band](docs/source/_static/s2_view_azimuth_bands.png)
+![viewing azimuth per band](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/s2_view_azimuth_bands.png)
 
-![across-track profile](docs/source/_static/s2_detector_profile.png)
+![across-track profile](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/s2_detector_profile.png)
 
 ## Example
 
-![example gif](docs/source/_static/GRSdriver_visual_tool_optimized.gif)
+![example gif](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/GRSdriver_visual_tool_optimized.gif)
 
 ## 2D-fitting method for angle computation
 
-![example files](docs/source/_static/example_2D_fitting_one_band_v3.png)
-![example files](docs/source/_static/example_scattering_angle_all_bands.png)
-![example files](docs/source/_static/example_reflectance_all_bands.png)
+![example files](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/example_2D_fitting_one_band_v3.png)
+![example files](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/example_scattering_angle_all_bands.png)
+![example files](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/example_reflectance_all_bands.png)
 
 ## Example of water masking
 
-![example files](docs/source/_static/example_ndwi_mask.png)
+![example files](https://raw.githubusercontent.com/Tristanovsk/GRSdriver/master/docs/source/_static/example_ndwi_mask.png)
 
 ## Changes
 
-See [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](https://github.com/Tristanovsk/GRSdriver/blob/master/CHANGELOG.md).
