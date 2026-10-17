@@ -18,8 +18,10 @@ Example::
 import datetime
 import glob
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import dask.array as da
 import pandas as pd
 import geopandas as gpd
 import xarray as xr
@@ -254,9 +256,11 @@ class LandsatDriver():
         # convert band from normalized radiance into reflectance
         # vis-NIR-SWIR bands only (upper limit 3000nm)
         # -----------------------------------------------------------
-        mus = np.cos(np.radians(self.prod['sza'])).astype(self.prod.bands.dtype)
-        self.prod['bands'] = xr.where(self.prod.wl <= 3000, self.prod.bands / mus, self.prod.bands,
-                                      keep_attrs=True).transpose(*self.prod.bands.dims)
+        bands = self.prod.bands
+        mus = np.cos(np.radians(self.prod['sza'])).astype(bands.dtype)
+        # DataArray.where rather than xr.where, which computes float64 on dask arrays (float32 declared)
+        self.prod['bands'] = bands.where(self.prod.wl > 3000, bands / mus).astype(bands.dtype) \
+            .transpose(*bands.dims)
 
 
         self.prod.attrs = self.prod.attrs
@@ -301,7 +305,19 @@ class LandsatDriver():
             margin = 2 * max(abs(float(ds.x[1] - ds.x[0])), abs(float(ds.y[1] - ds.y[0])))
             ds = ds.sel(x=slice(x.min() - margin, x.max() + margin),
                         y=slice(y.max() + margin, y.min() - margin))
+            dtypes = {var: ds[var].dtype for var in ds.data_vars}
             ds = ds.interp(x=self.prod.x, y=self.prod.y, method=method)
+            # interp computes in float64 (on dask arrays while declaring the input dtype):
+            # float variables back to their dtype (e.g. float32 angles)
+            for var, dtype in dtypes.items():
+                if dtype.kind == 'f':
+                    data = ds[var].data
+                    if isinstance(data, da.Array):
+                        data = data.map_blocks(lambda block, dtype=dtype: block.astype(dtype, copy=False),
+                                               dtype=dtype)
+                    else:
+                        data = data.astype(dtype, copy=False)
+                    ds[var] = ds[var].copy(data=data)
         if self.prod.bands.chunks is not None:
             ds = ds.chunk({dim: self.prod.bands.chunksizes[dim] for dim in ('y', 'x')})
         return ds
@@ -463,18 +479,20 @@ class LandsatDriver():
 
         # lazy reading in dask mode
         chunks = DASK_CHUNKS if use_dask() else None
-        geom = []
-        for geom_ in geoms:
-            ang_file = glob.glob(opj(self.abspath, '*' + geom_[1] + '.TIF'))[0]
-            raster = xrio.open_rasterio(ang_file, chunks=chunks).squeeze()
-            raster.rio.write_nodata(nodata, inplace=True)
-            raster = raster.where(raster != raster.rio.nodata).astype(np.float32) * np.float32(scale_factor)
 
-            raster.name = geom_[0]
-            geom.append(raster)
-        geom = xr.merge(geom,compat='override')
+        def read_angle(suffix):
+            # native grid of the angle file, read as float32 (exact for the stored integers)
+            ang_file = glob.glob(opj(self.abspath, '*' + suffix + '.TIF'))[0]
+            with rasterio.open(ang_file) as src:
+                grid = (src.transform, src.width, src.height)
+            raster = read_on_grid(ang_file, *grid, nodata=nodata, dtype='float32', chunks=chunks)
+            return raster.where(raster != nodata) * np.float32(scale_factor)
+
+        with ThreadPoolExecutor(max_workers=max(1, self.n_workers)) as executor:
+            rasters = list(executor.map(read_angle, [suffix for _, suffix in geoms]))
+        geom = xr.Dataset({name: raster for (name, _), raster in zip(geoms, rasters)})
         geom['raa'] = (geom['saa'] - geom['vaa'])  # %360
-        self.geom = geom.drop_vars(['vaa', 'saa','band'])
+        self.geom = geom.drop_vars(['vaa', 'saa'])
 
     @staticmethod
     def scat_angle(sza, vza, azi):

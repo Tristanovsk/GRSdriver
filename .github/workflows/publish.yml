@@ -1,4 +1,4 @@
-# Publish to PyPI when a version tag (e.g. 2.0.2) is pushed.
+# Publish to PyPI and create the GitHub release when a version tag (e.g. 2.0.2) is pushed.
 # Needs a trusted publisher on PyPI (one-time setup, see docs/source/contributing.rst):
 # project GRSdriver, owner Tristanovsk, repository GRSdriver, workflow publish.yml, environment pypi.
 name: publish
@@ -41,3 +41,31 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # GitHub release page of the tag: notes from the CHANGELOG section of the version, distributions attached
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          {
+            awk -v v="$VERSION" '$0 ~ "^## v"v"( |$)" {f=1; next} /^## / {f=0} f' CHANGELOG.md | sed -e '/./,$!d'
+            echo
+            echo '```'
+            echo "pip install --upgrade GRSdriver==$VERSION"
+            echo '```'
+            echo
+            echo "Full history: [CHANGELOG](https://github.com/$GITHUB_REPOSITORY/blob/master/CHANGELOG.md)"
+          } > notes.md
+          gh release create "$VERSION" dist/* --title "GRSdriver $VERSION" --notes-file notes.md --verify-tag

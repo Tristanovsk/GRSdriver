@@ -91,7 +91,11 @@ equations.
 #
 # v2.0.3 (2026-10-16):
 # README for 2.0, optional extras viz and tutorials, minimal environment.yml
-__version__='2.0.3'
+#
+# v2.0.4 (2026-10-17):
+# direct reading of the bands on their own grid (~20-25 % faster on full scenes),
+# Landsat angles in float32 (also interpolated and in dask mode), automatic GitHub release
+__version__='2.0.4'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver

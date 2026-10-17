@@ -49,11 +49,39 @@ def use_dask():
     return value.lower() in ('1', 'true')
 
 
+def _pixel_offset(src_transform, transform):
+    '''
+    (row, col) offset of the target grid in the source grid when both grids coincide (same
+    pixel size, north up, target origin on a source pixel corner), else None.
+    '''
+    if not (np.isclose(transform.a, src_transform.a) and np.isclose(transform.e, src_transform.e)
+            and transform.b == transform.d == src_transform.b == src_transform.d == 0):
+        return None
+    col = (transform.c - src_transform.c) / src_transform.a
+    row = (transform.f - src_transform.f) / src_transform.e
+    if abs(col - round(col)) > 1e-6 or abs(row - round(row)) > 1e-6:
+        return None
+    return round(row), round(col)
+
+
 def _read_window(path, transform, width, height, resampling, nodata, dtype):
     '''
     Read the first band of ``path`` on a target grid, as a numpy array (see :func:`read_on_grid`).
     '''
     with rasterio.open(path) as src:
+        offset = _pixel_offset(src.transform, transform)
+        if offset is not None:
+            # target grid = part of the source grid: direct copy, no resampling needed
+            row, col = offset
+            src_nodata = src.nodata if nodata is None else nodata
+            data = np.full((height, width), 0 if src_nodata is None else src_nodata,
+                           dtype=dtype or src.dtypes[0])
+            r0, c0 = max(row, 0), max(col, 0)
+            r1, c1 = min(row + height, src.height), min(col + width, src.width)
+            if r1 > r0 and c1 > c0:
+                window = rasterio.windows.Window(c0, r0, c1 - c0, r1 - r0)
+                data[r0 - row:r1 - row, c0 - col:c1 - col] = src.read(1, window=window)
+            return data
         # source window covering the target grid (north up), with a margin for the
         # resampling kernel
         minx, maxx = transform.c, transform.c + transform.a * width

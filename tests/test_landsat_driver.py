@@ -94,3 +94,19 @@ def test_n_workers_identical():
         l1.load_product()
         prods.append(l1.prod)
     np.testing.assert_array_equal(prods[0].bands.values, prods[1].bands.values)
+
+
+@pytest.mark.parametrize('resolution', [30, 60])
+def test_dask_identical(monkeypatch, resolution):
+    '''Lazy (dask) product identical to the eager one, float32 angles in both modes.'''
+    prods = []
+    for lazy in ('0', '1'):
+        monkeypatch.setenv('GRSDRIVER_USE_DASK', lazy)
+        l1 = LandsatDriver(IMAGE, band_idx=[1, 4, 9], subset=SUBSET, resolution=resolution)
+        l1.load_product()
+        prods.append(l1.prod.compute())
+    eager, lazy = prods
+    for var in ('bands', 'sza', 'vza', 'raa'):
+        assert eager[var].dtype == lazy[var].dtype == np.float32
+        np.testing.assert_array_equal(eager[var].values, lazy[var].values)
+    np.testing.assert_array_equal(eager.flags_l1.values, lazy.flags_l1.values)

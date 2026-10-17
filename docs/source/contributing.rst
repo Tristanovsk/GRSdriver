@@ -170,7 +170,8 @@ Publish
 
    .. code-block:: shell
 
-      git push origin master develop --tags
+      git push origin master develop
+      git push origin X.Y.Z
 
 2. Upload to PyPI. Once the trusted publisher is set up (see below), pushing the tag is enough:
    the ``publish`` GitHub workflow checks that the tag equals ``__version__``, builds and uploads the
@@ -186,8 +187,9 @@ Publish
    use `TestPyPI <https://test.pypi.org>`_ (``twine upload --repository testpypi dist/*``, separate
    account and token).
 3. Check ``pip install --upgrade GRSdriver`` and the project page; Read the Docs builds the
-   documentation of ``master`` automatically. Optionally, create a GitHub release from the tag
-   with the CHANGELOG section as notes.
+   documentation of ``master`` automatically. With the ``publish`` workflow, the GitHub release of
+   the tag is also created, with the CHANGELOG section of the version as notes and the
+   distributions attached; otherwise, create it by hand from the tag.
 
 Continuous integration
 ----------------------
@@ -197,7 +199,9 @@ Two GitHub Actions workflows are in ``.github/workflows``:
 - ``tests.yml``, on each push to ``master`` or ``develop`` and on pull requests: installs the package
   with Python 3.9 (oldest supported), 3.12 and 3.13 and runs the tests (those that need satellite
   products are skipped), then builds the distributions and runs ``twine check``;
-- ``publish.yml``, on a version tag (e.g. ``2.0.2``): builds and uploads to PyPI.
+- ``publish.yml``, on a version tag (e.g. ``2.0.2``): builds and uploads to PyPI, then creates the
+  GitHub release (notes from the CHANGELOG). Push the tag alone (``git push origin 2.0.2``): GitHub
+  starts no workflow for the tags of a push that contains more than three tags.
 
 The upload uses `trusted publishing <https://docs.pypi.org/trusted-publishers/>`_, without any token
 stored on GitHub. One-time setup:

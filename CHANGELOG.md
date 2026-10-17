@@ -2,6 +2,20 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## v2.0.4 (2026-10-17)
+
+- Release workflow: the GitHub release of a version tag is created automatically, with the
+  CHANGELOG section as notes and the distributions attached.
+- Performance: a band read on its own grid (e.g. Landsat at 30 m, Sentinel-2 bands at their
+  native resolution) is copied directly instead of going through the GDAL resampling, and the
+  Landsat angle files are read in parallel as float32: full Landsat scene at 30 m ~25 % faster,
+  full Sentinel-2 tile at 20 m ~20 % faster. Identical results.
+- Landsat: the angles are float32, as documented, also when they are interpolated (subset or
+  resolution other than 30 m); they were float64. In dask mode, the angles and the bands were
+  computed in float64 while float32 was declared (twice the memory); the lazy product is now
+  identical to the eager one. With a subset or a resolution other than 30 m, the bands change by
+  a few float32 units in the last place (relative difference < 5e-7).
+
 ## v2.0.3 (2026-10-16)
 
 - README: what's new in 2.0 and how to upgrade from 1.x, Python versions, optional extras,

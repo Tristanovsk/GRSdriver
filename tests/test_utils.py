@@ -34,3 +34,32 @@ def test_clip_raster_size():
     clipped = SpatioTemp.clip_raster(raster, 43.47, 5.10, 10000)
     for coord in (clipped.x, clipped.y):
         assert abs(float(coord.max() - coord.min()) + 100 - 10000) <= 200
+
+
+@pytest.mark.parametrize('offset', [(0, 0), (3, 5), (-4, -2), (95, 90)])
+def test_read_on_grid_direct(tmp_path, offset):
+    '''Target grid aligned on the source grid: direct copy identical to the GDAL resampling,
+    with the fill value outside the source.'''
+    import rasterio
+    from affine import Affine
+    from rasterio.enums import Resampling
+    from GRSdriver import utils
+    src_transform = Affine(30, 0, 600000, 0, -30, 4800000)
+    data = np.arange(100 * 100, dtype=np.uint16).reshape(100, 100) + 1
+    data[10:20, 30:40] = 0
+    path = tmp_path / 'src.tif'
+    with rasterio.open(path, 'w', driver='GTiff', width=100, height=100, count=1, dtype='uint16',
+                       crs='EPSG:32631', transform=src_transform, nodata=0) as dst:
+        dst.write(data, 1)
+    row, col = offset
+    transform = src_transform * Affine.translation(col, row)
+    args = (str(path), transform, 20, 30, Resampling.nearest, 0, 'float32')
+    direct = utils._read_window(*args)
+    try:
+        utils._pixel_offset, pixel_offset = (lambda *a: None), utils._pixel_offset
+        resampled = utils._read_window(*args)
+    finally:
+        utils._pixel_offset = pixel_offset
+    assert pixel_offset(src_transform, transform) == (row, col)
+    assert direct.dtype == resampled.dtype == np.float32
+    np.testing.assert_array_equal(direct, resampled)
