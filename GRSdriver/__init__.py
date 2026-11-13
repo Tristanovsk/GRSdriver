@@ -95,7 +95,11 @@ equations.
 # v2.0.4 (2026-10-17):
 # direct reading of the bands on their own grid (~20-25 % faster on full scenes),
 # Landsat angles in float32 (also interpolated and in dask mode), automatic GitHub release
-__version__='2.0.4'
+#
+# v2.1.0 (2026-11-13):
+# products in buckets (s3://, gs://, https://) read in place (GRSdriver.remote, storage_options of the
+# drivers, extra remote); STAC catalogues (GRSdriver.stac: build_catalog, search, open_item)
+__version__='2.1.0'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver

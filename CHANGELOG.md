@@ -2,7 +2,7 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
-## Unreleased
+## v2.1.0 (2026-11-13)
 
 - Products in buckets: the drivers open a product from its URL (`s3://`, `gs://`...) in place, nothing
   is downloaded: the product folder is listed once, the metadata are read through fsspec and the
