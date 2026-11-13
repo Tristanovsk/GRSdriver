@@ -96,7 +96,8 @@ class LandsatDriver():
       (wavelength <= 3000 nm, divided by cos(sza)); brightness temperature (K)
       for the TIR bands
     - ``sza``, ``vza`` (y, x): solar and viewing zenith angles (deg)
-    - ``raa`` (y, x): relative azimuth, solar - viewing azimuth (deg)
+    - ``raa`` (y, x): relative azimuth, (viewing - solar azimuth) % 360 (deg), same convention as
+      Sentinel-2: 180 = specular direction (viewing azimuth: from the pixel toward the sensor)
     - ``flags_l1`` (y, x): L1 quality bitmask (``QA_PIXEL``), uint32
     - ``SRF`` (wl, wl_hr): spectral response function of each band
     - ``wl_true`` (wl): central wavelength computed from the SRF (nm)
@@ -470,7 +471,9 @@ class LandsatDriver():
                   geoms=(['sza', 'SZA'], ['vza', 'VZA'], ['vaa', 'VAA'], ['saa', 'SAA'])):
         '''
         Load the angles from the angle GeoTIFFs of the product into ``self.geom``
-        (``sza``, ``vza`` and ``raa`` = saa - vaa, in deg, float32), on their native grid.
+        (``sza``, ``vza`` and ``raa`` = (vaa - saa) % 360, in deg, float32), on their native grid.
+        The relative azimuth follows the convention of the Sentinel-2 driver (180 = specular direction):
+        ``VAA`` of Collection 2 is the azimuth of the sensor seen from the pixel, as in Sentinel-2.
 
         :param scale_factor: scale factor of the stored integer values
         :param nodata: no-data value of the stored integer values
@@ -494,7 +497,7 @@ class LandsatDriver():
         with ThreadPoolExecutor(max_workers=max(1, self.n_workers)) as executor:
             rasters = list(executor.map(read_angle, [suffix for _, suffix in geoms]))
         geom = xr.Dataset({name: raster for (name, _), raster in zip(geoms, rasters)})
-        geom['raa'] = (geom['saa'] - geom['vaa'])  # %360
+        geom['raa'] = (geom['vaa'] - geom['saa']) % 360
         self.geom = geom.drop_vars(['vaa', 'saa'])
 
     @staticmethod

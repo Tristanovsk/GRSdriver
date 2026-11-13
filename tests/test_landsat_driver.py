@@ -110,3 +110,21 @@ def test_dask_identical(monkeypatch, resolution):
         assert eager[var].dtype == lazy[var].dtype == np.float32
         np.testing.assert_array_equal(eager[var].values, lazy[var].values)
     np.testing.assert_array_equal(eager.flags_l1.values, lazy.flags_l1.values)
+
+
+def test_raa_convention(prod):
+    '''raa = (vaa - saa) % 360, as for Sentinel-2 (180 = specular direction): VAA of Collection 2 is the azimuth of
+    the sensor seen from the pixel'''
+    raa = prod.raa
+    assert np.isfinite(raa.values).any()
+    assert (raa.values[np.isfinite(raa.values)] >= 0).all() and (raa.values[np.isfinite(raa.values)] < 360).all()
+    # same value as the raw angle files at the pixels of the product (same 30 m UTM grid)
+    vaa, transform = _raw('VAA')
+    saa, _ = _raw('SAA')
+    xs, ys = np.meshgrid(raa.x.values[::50], raa.y.values[::50])
+    cols, rows = (~transform) * (xs, ys)
+    rows, cols = np.floor(rows).astype(int), np.floor(cols).astype(int)
+    expected = ((vaa[rows, cols] - saa[rows, cols]) / 100.) % 360
+    got = raa.values[::50, ::50]
+    ok = np.isfinite(got) & (vaa[rows, cols] != 0)
+    np.testing.assert_allclose(got[ok], expected[ok], atol=0.02)
