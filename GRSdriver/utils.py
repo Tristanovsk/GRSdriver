@@ -29,6 +29,8 @@ import rasterio.windows
 from affine import Affine
 import geopandas as gpd
 
+from .remote import open_raster
+
 USE_DASK = 'GRSDRIVER_USE_DASK'
 '''Name of the environment variable switching the drivers to lazy (dask-backed) loading.'''
 
@@ -64,11 +66,11 @@ def _pixel_offset(src_transform, transform):
     return round(row), round(col)
 
 
-def _read_window(path, transform, width, height, resampling, nodata, dtype):
+def _read_window(path, transform, width, height, resampling, nodata, dtype, env=None):
     '''
     Read the first band of ``path`` on a target grid, as a numpy array (see :func:`read_on_grid`).
     '''
-    with rasterio.open(path) as src:
+    with open_raster(path, env) as src:
         offset = _pixel_offset(src.transform, transform)
         if offset is not None:
             # target grid = part of the source grid: direct copy, no resampling needed
@@ -107,7 +109,8 @@ def read_on_grid(path, transform, width, height,
                  resampling=Resampling.nearest,
                  nodata=None,
                  dtype=None,
-                 chunks=None):
+                 chunks=None,
+                 env=None):
     '''
     Read the first band of a raster on a target grid (same CRS): only the pixels
     needed for the target grid are read and decoded once, then resampled (if needed)
@@ -117,7 +120,8 @@ def read_on_grid(path, transform, width, height,
     (the whole raster is decoded at once, much faster than block by block for
     compressed formats such as JPEG2000), then rechunked to ``chunks``.
 
-    :param path: path of the raster file
+    :param path: path of the raster file, or its URL (``s3://``, ``https://``..., see
+        :mod:`GRSdriver.remote`)
     :param transform: affine transform of the target grid
     :param width: number of columns of the target grid
     :param height: number of rows of the target grid
@@ -128,11 +132,13 @@ def read_on_grid(path, transform, width, height,
         to avoid rounding averaged integers); by default the one of the file
     :param chunks: dask chunks (lazy reading, e.g. :data:`DASK_CHUNKS`), ``None`` to load
         into memory
+    :param env: GDAL configuration options to read a remote file (see
+        :func:`GRSdriver.remote.gdal_options`)
     :return: DataArray (y, x), with the ``rio`` georeferencing
     '''
-    with rasterio.open(path) as src:
+    with open_raster(path, env) as src:
         crs, out_dtype = src.crs, np.dtype(dtype or src.dtypes[0])
-    args = (path, transform, width, height, resampling, nodata, dtype)
+    args = (path, transform, width, height, resampling, nodata, dtype, env)
     if chunks is None:
         data = _read_window(*args)
     else:

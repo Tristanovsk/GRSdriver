@@ -17,8 +17,9 @@ Example::
 '''
 
 import datetime
-import glob
+import io
 import os
+import posixpath
 from concurrent.futures import ThreadPoolExecutor
 import xml.etree.ElementTree as ET
 
@@ -39,6 +40,7 @@ from shapely.geometry import box
 
 from . import __package__
 from .utils import use_dask, DASK_CHUNKS, read_on_grid, stack_bands, get_bounds, subset_grid
+from .remote import product_files
 
 opj = os.path.join
 BAND_NAMES = np.array(['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12'])
@@ -206,7 +208,10 @@ class Sentinel2Driver():
     and :meth:`load_geom`. The other methods are the steps of the computation of the
     viewing angles, documented for advanced uses.
 
-    :param imageSAFE: path to the ``.SAFE`` directory of the L1C product
+    :param imageSAFE: ``.SAFE`` directory of the L1C product: local path, URL in a bucket
+        (``s3://bucket/.../S2A_MSIL1C_..._.SAFE``, read in place, see :mod:`GRSdriver.remote`) or
+        :class:`~GRSdriver.remote.ProductFiles`; to open a product found in a STAC catalogue, see
+        :func:`GRSdriver.stac.open_item`
     :param band_idx: indices of the bands to load, in
         ``B01, B02, B03, B04, B05, B06, B07, B08, B8A, B09, B10, B11, B12``
         (0 to 12)
@@ -233,7 +238,10 @@ class Sentinel2Driver():
         read; ``n_workers=1`` minimizes the memory. Not used for the bands in dask mode,
         where dask schedules the reading.
     :param verbose: print progress and fitting reports
+    :param storage_options: options of the fsspec file system of a URL (e.g. ``key``, ``secret``,
+        ``endpoint_url``, ``profile`` for S3); by default from the environment (``AWS_PROFILE``...)
 
+    :ivar files: files of the product (:class:`~GRSdriver.remote.ProductFiles`)
     :ivar prod: the product (``xarray.Dataset``), filled by :meth:`load_product` or :meth:`load_bands`
     :ivar geom: sun and viewing angles on the ``resolution_angle`` grid, filled by :meth:`load_geom`
     :ivar metadata: main metadata of the product, as a flat dict of strings (see :func:`flat_metadata`)
@@ -258,10 +266,13 @@ class Sentinel2Driver():
                  lazy_geom=False,
                  geom_chunks=1024,
                  n_workers=4,
-                 verbose=False):
+                 verbose=False,
+                 storage_options=None):
 
-        self.abspath = abspath = os.path.abspath(imageSAFE)
-        dirroot, basename = os.path.split(abspath)
+        # files of the product, local or in a bucket (listed once)
+        self.files = files = product_files(imageSAFE, storage_options)
+        self.abspath = files.root
+        basename = files.name
         self.verbose = verbose
         self.band_idx = band_idx
         self.band_tbp_idx = band_tbp_idx
@@ -291,17 +302,17 @@ class Sentinel2Driver():
             self.width, self.height = 5490, 5490
         elif resolution_angle == 60:
             self.width, self.height = 1830, 1830
-        try:
-            self.xml_granule = glob.glob(opj(imageSAFE, 'GRANULE', '*', 'MTD_TL.xml'))[0]
-            self.xml_file = glob.glob(opj(imageSAFE, 'MTD*.xml'))[0]
-        except:
+        if files.find('GRANULE/*/MTD_TL.xml') and files.find('MTD*.xml'):
+            self.xml_granule = files.get('GRANULE/*/MTD_TL.xml')
+            self.xml_file = files.get('MTD*.xml')
+        else:
             print('old or deprecated SAFE format detected')
-            self.xml_granule = glob.glob(opj(imageSAFE, 'GRANULE', '*', '*MTD*.xml'))[0]
-            self.xml_file = glob.glob(opj(imageSAFE, '*MTD*.xml'))[0]
+            self.xml_granule = files.get('GRANULE/*/*MTD*.xml')
+            self.xml_file = files.get('*MTD*.xml')
 
         # get metadata: full XML (metadata2) and main items as a flat dict (metadata)
-        with open(self.xml_file) as f:
-            self.metadata2 = xmltodict.parse(f.read())
+        self.metadata2 = xmltodict.parse(files.read_bytes(self.xml_file))
+        self._granule_xml = files.read_bytes(self.xml_granule)
         self.metadata = flat_metadata(self.metadata2['n1:Level-1C_User_Product'])
         __ = []
         for _ in self.metadata2['n1:Level-1C_User_Product']['n1:General_Info']['Product_Image_Characteristics'][
@@ -344,8 +355,8 @@ class Sentinel2Driver():
                 self.radio_offset[int(_['@band_id'])] = float(_['#text'])
 
         # save geographic data (tile geocoding of the granule metadata)
-        self.granule_dir = os.path.dirname(self.xml_granule)
-        geocoding = ET.parse(self.xml_granule).getroot().find('.//Tile_Geocoding')
+        self.granule_dir = (posixpath if files.remote else os.path).dirname(self.xml_granule)
+        geocoding = ET.fromstring(self._granule_xml).find('.//Tile_Geocoding')
         self.crs = CRS.from_string(geocoding.findtext('HORIZONTAL_CS_CODE'))
         self.epsg = self.crs.to_epsg()
         minx = float(geocoding.findtext("Geoposition[@resolution='10']/ULX"))
@@ -453,7 +464,8 @@ class Sentinel2Driver():
         '''
         Path of the granule file matching ``pattern`` (e.g. ``IMG_DATA/*_B02.jp2``).
         '''
-        file = glob.glob(opj(self.granule_dir, pattern))
+        granule = (posixpath if self.files.remote else os.path).basename(self.granule_dir)
+        file = self.files.find('GRANULE/' + granule + '/' + pattern)
         if not file:
             raise FileNotFoundError('No ' + pattern + ' file in ' + self.granule_dir)
         return file[0]
@@ -471,7 +483,8 @@ class Sentinel2Driver():
         transform, width, height = grid
         if self.processing_baseline < 4:
             # GML polygons, detector number in gml_id: detector_footprint-B02-<detector>-<index>
-            mask_df = gpd.read_file(self._get_file('QI_DATA/MSK_DETFOO_B' + BAND_ID[bandId] + '.gml'))
+            gml = self._get_file('QI_DATA/MSK_DETFOO_B' + BAND_ID[bandId] + '.gml')
+            mask_df = gpd.read_file(io.BytesIO(self.files.read_bytes(gml)) if self.files.remote else gml)
             detector_num = mask_df.gml_id.str.split('-', expand=True).values[:, 2].astype(int)
             footprint = rasterize(shapes=zip(mask_df.geometry, detector_num), out_shape=(height, width),
                                   transform=transform, fill=0, dtype=np.uint8)
@@ -479,7 +492,7 @@ class Sentinel2Driver():
             y = transform.f + transform.e * (np.arange(height) + 0.5)
             return xr.DataArray(footprint, dims=('y', 'x'), coords=dict(x=x, y=y))
         footprint = read_on_grid(self._get_file('QI_DATA/MSK_DETFOO_B' + BAND_ID[bandId] + '.jp2'), *grid,
-                                 resampling=Resampling.nearest, chunks=chunks)
+                                 resampling=Resampling.nearest, chunks=chunks, env=self.files.env)
         footprint.attrs, footprint.encoding = {}, {}
         return footprint
 
@@ -503,7 +516,8 @@ class Sentinel2Driver():
             resampling = Resampling.nearest
         # resampling computed in float32 (no rounding of averaged DN), DN = 0 ignored
         dn = read_on_grid(self._get_file('IMG_DATA/*_B' + BAND_ID[bandId] + '.jp2'), *grid,
-                          resampling=resampling, nodata=0, dtype='float32', chunks=chunks)
+                          resampling=resampling, nodata=0, dtype='float32', chunks=chunks,
+                          env=self.files.env)
         # .data: same grid, no alignment needed; stays lazy in dask mode
         valid = (dn != 0) & (self._read_footprint(bandId, grid, chunks=chunks).data != 0)
         band = (dn + np.float32(self.radio_offset[bandId])) / np.float32(self.quantification_value)
@@ -515,7 +529,7 @@ class Sentinel2Driver():
         '''
         product = self.metadata2['n1:Level-1C_User_Product']
         datatake = product['n1:General_Info']['Product_Info']['Datatake']
-        product_name = os.path.basename(self.abspath).replace('.SAFE', '')
+        product_name = self.files.name.replace('.SAFE', '')
         name = product_name.split('_')
         return {'long_name': ' '.join(self.INFO.loc['name'].values),
                 'constellation': 'Sentinel-2',
@@ -612,9 +626,7 @@ class Sentinel2Driver():
         '''
 
         minx, miny, maxx, maxy = self.bounds.values[0]
-        with open(self.xml_granule) as xml_file:
-            tree = ET.parse(xml_file)
-            root = tree.getroot()
+        root = ET.fromstring(self._granule_xml)
 
         raw_sza = self.parse_angular_grid_node(root.find('.//Tile_Angles/Sun_Angles_Grid/Zenith'))
         raw_sazi = self.parse_angular_grid_node(root.find('.//Tile_Angles/Sun_Angles_Grid/Azimuth'))

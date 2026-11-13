@@ -16,7 +16,6 @@ Example::
 '''
 
 import datetime
-import glob
 import os
 from concurrent.futures import ThreadPoolExecutor
 
@@ -37,6 +36,7 @@ from importlib_resources import files
 
 from . import __package__
 from .utils import use_dask, DASK_CHUNKS, read_on_grid, stack_bands, get_bounds, subset_grid
+from .remote import product_files
 
 opj = os.path.join
 
@@ -119,7 +119,10 @@ class LandsatDriver():
     The data are loaded by :meth:`load_product`, or separately by :meth:`load_bands`,
     :meth:`load_geom` and :meth:`load_mask`.
 
-    :param image_path: path to the directory of the L1 product
+    :param image_path: directory of the L1 product: local path, URL in a bucket
+        (``s3://bucket/.../LC09_L1TP_..._T1``, read in place, see :mod:`GRSdriver.remote`) or
+        :class:`~GRSdriver.remote.ProductFiles`; to open a product found in a STAC catalogue, see
+        :func:`GRSdriver.stac.open_item`
     :param band_idx: indices of the bands to load, in
         ``CA, BLUE, GREEN, PAN, RED, NIR, SWIR_CIRRUS, SWIR_1, SWIR_2, TIR_1, TIR_2``
         (0 to 10); TIR bands excluded by default
@@ -135,7 +138,10 @@ class LandsatDriver():
         while it is read; ``n_workers=1`` minimizes the memory. Not used in dask mode,
         where dask schedules the reading.
     :param verbose: verbosity flag
+    :param storage_options: options of the fsspec file system of a URL (e.g. ``key``, ``secret``,
+        ``endpoint_url``, ``profile``, ``requester_pays`` for S3); by default from the environment
 
+    :ivar files: files of the product (:class:`~GRSdriver.remote.ProductFiles`)
     :ivar prod: the product (``xarray.Dataset``), filled by :meth:`load_product` or :meth:`load_bands`
     :ivar geom: sun and viewing angles on their native grid, filled by :meth:`load_geom`
     :ivar mask: L1 quality bitmask (``flags_l1``), filled by :meth:`load_mask`
@@ -160,10 +166,12 @@ class LandsatDriver():
                  subset=None,
                  resolution=30,
                  n_workers=4,
-                 verbose=False):
+                 verbose=False,
+                 storage_options=None):
 
-        self.abspath = os.path.abspath(image_path)
-        dirroot, basename = os.path.split(self.abspath)
+        # files of the product, local or in a bucket (listed once)
+        self.files = product_files(image_path, storage_options)
+        self.abspath = self.files.root
         self.verbose = verbose
         self.band_idx = band_idx
         self.band_tbp_idx = band_tbp_idx
@@ -184,12 +192,8 @@ class LandsatDriver():
         # --------------------------------
         # metadata
         # --------------------------------
-        mtd_files = glob.glob(opj(self.abspath, '*_MTL.xml'))
-        if not mtd_files:
-            raise FileNotFoundError('No *_MTL.xml metadata file in ' + self.abspath)
-        self.mtd_file = mtd_files[0]
-        with open(self.mtd_file) as f:
-            self.metadata = xmltodict.parse(f.read())['LANDSAT_METADATA_FILE']
+        self.mtd_file = self.files.get('*_MTL.xml')
+        self.metadata = xmltodict.parse(self.files.read_bytes(self.mtd_file))['LANDSAT_METADATA_FILE']
         content = self.metadata['PRODUCT_CONTENTS']
         image = self.metadata['IMAGE_ATTRIBUTES']
 
@@ -206,7 +210,7 @@ class LandsatDriver():
         self.acquisition_date = self.datetime
 
         # save geographic data (from the QA_PIXEL band, on the 30 m grid of the scene)
-        with rasterio.open(self._get_file('QA_PIXEL')) as src:
+        with self.files.open_raster(self._get_file('QA_PIXEL')) as src:
             self.crs = src.crs
             minx, miny, maxx, maxy = src.bounds
         self.epsg = self.crs.to_epsg()
@@ -273,10 +277,7 @@ class LandsatDriver():
         '''
         Path of the product file ``*_<suffix>.TIF`` (e.g. ``B4``, ``QA_PIXEL``).
         '''
-        file = glob.glob(opj(self.abspath, '*_' + suffix + '.TIF'))
-        if not file:
-            raise FileNotFoundError('No *_' + suffix + '.TIF file in ' + self.abspath)
-        return file[0]
+        return self.files.get('*_' + suffix + '.TIF')
 
     def _get_grid(self, subset=None):
         '''
@@ -328,7 +329,7 @@ class LandsatDriver():
         pixels outside the scene set to fill.
         '''
         return read_on_grid(self._get_file('QA_PIXEL'), *grid,
-                            resampling=Resampling.nearest, nodata=QA_FILL, chunks=chunks)
+                            resampling=Resampling.nearest, nodata=QA_FILL, chunks=chunks, env=self.files.env)
 
     def _read_band(self, band_number, grid, qa=None, chunks=None):
         '''
@@ -344,7 +345,7 @@ class LandsatDriver():
         :return: DataArray (y, x), float32
         '''
         path = self._get_file('B' + str(band_number))
-        with rasterio.open(path) as src:
+        with self.files.open_raster(path) as src:
             native_res = src.res[0]
         if self.resolution > native_res:
             resampling = Resampling.average
@@ -353,7 +354,8 @@ class LandsatDriver():
         else:
             resampling = Resampling.nearest
         # resampling computed in float32 (no rounding of averaged DN)
-        dn = read_on_grid(path, *grid, resampling=resampling, nodata=0, dtype='float32', chunks=chunks)
+        dn = read_on_grid(path, *grid, resampling=resampling, nodata=0, dtype='float32', chunks=chunks,
+                          env=self.files.env)
         if qa is None:
             qa = self._read_qa(grid, chunks=chunks)
         valid = (dn != 0) & (qa != QA_FILL)
@@ -482,10 +484,11 @@ class LandsatDriver():
 
         def read_angle(suffix):
             # native grid of the angle file, read as float32 (exact for the stored integers)
-            ang_file = glob.glob(opj(self.abspath, '*' + suffix + '.TIF'))[0]
-            with rasterio.open(ang_file) as src:
+            ang_file = self.files.get('*' + suffix + '.TIF')
+            with self.files.open_raster(ang_file) as src:
                 grid = (src.transform, src.width, src.height)
-            raster = read_on_grid(ang_file, *grid, nodata=nodata, dtype='float32', chunks=chunks)
+            raster = read_on_grid(ang_file, *grid, nodata=nodata, dtype='float32', chunks=chunks,
+                                  env=self.files.env)
             return raster.where(raster != nodata) * np.float32(scale_factor)
 
         with ThreadPoolExecutor(max_workers=max(1, self.n_workers)) as executor:

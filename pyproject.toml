@@ -52,6 +52,8 @@ dev = ["pytest", "build", "twine"]
 cli = ["matplotlib", "cartopy"]
 # interactive visualization tools (GRSdriver.visual)
 viz = ["matplotlib", "holoviews", "datashader", "bokeh", "colorcet", "panel"]
+# products in buckets (s3://, gs://, https://) and STAC catalogues (GRSdriver.remote, GRSdriver.stac)
+remote = ["fsspec>=2023.1", "s3fs>=2023.1", "aiohttp>=3.8"]
 # to run the tutorial notebooks
 tutorials = ["jupyterlab", "matplotlib", "cartopy", "requests"]
 

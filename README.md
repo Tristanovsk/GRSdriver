@@ -50,6 +50,7 @@ No separate GDAL installation is needed: rasterio and geopandas ship with their 
 | `cli` | `grs_driver` command line (RGB quicklooks) | `pip install "GRSdriver[cli]"` |
 | `viz` | interactive visualization tools (`GRSdriver.visual`) | `pip install "GRSdriver[viz]"` |
 | `tutorials` | running the tutorial notebooks | `pip install "GRSdriver[tutorials]"` |
+| `remote` | products in S3 buckets and STAC catalogues (`GRSdriver.remote`, `GRSdriver.stac`) | `pip install "GRSdriver[remote]"` |
 
 ### From the repository
 
@@ -92,6 +93,36 @@ importing GRSdriver to get a fully lazy (dask-backed) product.
 `grs_driver` writes an RGB quicklook (PNG) of a Sentinel-2 or Landsat product:
 ```commandline
 grs_driver S2B_MSIL1C_..._.SAFE --odir ./quicklooks --resolution 60
+```
+
+### Products in an S3 bucket and STAC catalogues
+
+The drivers open a product in a bucket in place, without downloading it: the metadata are read
+through fsspec and only the parts of the rasters needed are read by GDAL (`/vsis3/`). The
+credentials and the endpoint are those of the AWS profile, or `storage_options` (s3fs options):
+
+```python
+import os
+os.environ['AWS_PROFILE'] = 'grstbx-local'       # e.g. the local bucket of grstbx
+
+l1c = Sentinel2Driver('s3://grstbx-s3/sentinel-2/l1c/31TFJ/2023/06/11/S2A_MSIL1C_..._.SAFE', resolution=20)
+l1 = LandsatDriver('s3://bucket/landsat/LC09_L1TP_..._02_T1',
+                   storage_options={'key': '...', 'secret': '...', 'endpoint_url': 'https://...'})
+```
+
+`GRSdriver.stac` builds a static STAC catalogue of the products of a bucket (collections
+`sentinel-2-l1c` and `landsat-c2-l1`, same layout as the catalogues of grstbx), searches it (or a STAC
+API) and opens the products found:
+
+```python
+from GRSdriver import stac
+
+stac.build_catalog({'/data/satellite/Sentinel-2/L1C': 's3://grstbx-s3/sentinel-2/l1c'},
+                   's3://grstbx-s3/stac-l1')
+found = stac.search('s3://grstbx-s3/stac-l1/catalog.json', bbox=(5.03, 43.40, 5.24, 43.56),
+                    start='2023-06-01', end='2023-06-30', max_cloud_cover=20)
+l1c = stac.open_item(found.iloc[0], resolution=20, subset=roi)
+l1c.load_product()
 ```
 
 ## Tutorials

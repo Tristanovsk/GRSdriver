@@ -2,6 +2,20 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## Unreleased
+
+- Products in buckets: the drivers open a product from its URL (`s3://`, `gs://`...) in place, nothing
+  is downloaded: the product folder is listed once, the metadata are read through fsspec and the
+  rasters by GDAL (`/vsis3/`), only the parts needed. Credentials and endpoint from the AWS profile
+  (`endpoint_url` of `~/.aws/config` included) or the new `storage_options` argument of the drivers.
+  New module `GRSdriver.remote`; new optional extra `remote` (fsspec, s3fs, aiohttp). Identical
+  results to the local products (bands, angles, flags; eager and dask modes).
+- STAC catalogues: new module `GRSdriver.stac`: `build_catalog` writes a static catalogue of the
+  Sentinel-2 L1C and Landsat C2 L1 products of folders or buckets (layout of the grstbx catalogues),
+  `search` selects Items of a static catalogue or a STAC API (area, period, cloud cover, tile,
+  collection), `open_item` returns the driver of an Item.
+- `read_on_grid` takes the GDAL options of a remote file (`env`).
+
 ## v2.0.4 (2026-10-17)
 
 - Release workflow: the GitHub release of a version tag is created automatically, with the
