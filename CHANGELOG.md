@@ -2,6 +2,12 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## v2.1.1 (2026-11-14)
+
+- Landsat: relative azimuth `raa = (vaa - saa) % 360`, the same convention as Sentinel-2 (VAA is the
+  azimuth from the pixel to the sensor). The previous `raa` of the Landsat driver had the opposite
+  sense, which broke the sunglint geometry of GRSprocessor on Landsat scenes.
+
 ## v2.1.0 (2026-11-13)
 
 - Products in buckets: the drivers open a product from its URL (`s3://`, `gs://`...) in place, nothing

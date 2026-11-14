@@ -99,7 +99,10 @@ equations.
 # v2.1.0 (2026-11-13):
 # products in buckets (s3://, gs://, https://) read in place (GRSdriver.remote, storage_options of the
 # drivers, extra remote); STAC catalogues (GRSdriver.stac: build_catalog, search, open_item)
-__version__='2.1.0'
+#
+# v2.1.1 (2026-11-14):
+# Landsat relative azimuth (vaa - saa) % 360, same convention as Sentinel-2
+__version__='2.1.1'
 __package__ ='GRSdriver'
 
 from .driver_landsat_col2 import LandsatDriver
