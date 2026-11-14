@@ -2,6 +2,10 @@
 
 All notable changes to GRSdriver are listed here, most recent first.
 
+## Unreleased
+
+- Python 3.9 (end of life) no longer supported: `requires-python >= 3.10`; tests on 3.10, 3.12 and 3.13.
+
 ## v2.1.1 (2026-11-14)
 
 - Landsat: relative azimuth `raa = (vaa - saa) % 360`, the same convention as Sentinel-2 (VAA is the

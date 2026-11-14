@@ -36,7 +36,7 @@ Full documentation: https://grsdriver.readthedocs.io
 
 ## Installation
 
-Python 3.9 to 3.13:
+Python 3.10 to 3.13:
 
 ```commandline
 pip install GRSdriver

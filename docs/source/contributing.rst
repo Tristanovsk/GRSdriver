@@ -197,7 +197,7 @@ Continuous integration
 Two GitHub Actions workflows are in ``.github/workflows``:
 
 - ``tests.yml``, on each push to ``master`` or ``develop`` and on pull requests: installs the package
-  with Python 3.9 (oldest supported), 3.12 and 3.13 and runs the tests (those that need satellite
+  with Python 3.10 (oldest supported), 3.12 and 3.13 and runs the tests (those that need satellite
   products are skipped), then builds the distributions and runs ``twine check``;
 - ``publish.yml``, on a version tag (e.g. ``2.0.2``): builds and uploads to PyPI, then creates the
   GitHub release (notes from the CHANGELOG). Push the tag alone (``git push origin 2.0.2``): GitHub

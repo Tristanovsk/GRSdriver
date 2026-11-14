@@ -4,7 +4,7 @@ Usage
 Installation
 ------------
 
-GRSdriver needs Python 3.9 to 3.13:
+GRSdriver needs Python 3.10 to 3.13:
 
 .. code-block:: bash
 
